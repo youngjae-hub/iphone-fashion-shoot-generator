@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     }
 
     const service = getLoRATrainingService();
-    const model = service.getModel(loraModelId);
+    const model = await service.getModel(loraModelId);
 
     if (!model) {
       return NextResponse.json(

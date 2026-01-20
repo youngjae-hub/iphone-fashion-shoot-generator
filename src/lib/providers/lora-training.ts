@@ -5,11 +5,11 @@
 import Replicate from 'replicate';
 import { v4 as uuidv4 } from 'uuid';
 import JSZip from 'jszip';
+import { kv } from '@vercel/kv';
 import {
   LoRAModel,
   LoRATrainingRequest,
   LoRATrainingResponse,
-  LoRAStatus,
   PoseType,
 } from '@/types';
 import { generateIPhoneStylePrompt, DEFAULT_NEGATIVE_PROMPT } from './base';
@@ -26,8 +26,93 @@ function getReplicateClient(): Replicate {
   return replicateClient;
 }
 
-// LoRA 모델 저장소 (실제 프로덕션에서는 DB 사용)
-const loraModels: Map<string, LoRAModel> = new Map();
+// Vercel KV 키 프리픽스
+const LORA_MODEL_PREFIX = 'lora:model:';
+const LORA_MODEL_LIST_KEY = 'lora:models:list';
+
+// KV 사용 가능 여부 확인
+function isKVAvailable(): boolean {
+  return !!process.env.KV_REST_API_URL && !!process.env.KV_REST_API_TOKEN;
+}
+
+// 로컬 개발용 메모리 저장소 (KV 없을 때 폴백)
+const localModels: Map<string, LoRAModel> = new Map();
+
+// ============================================
+// Storage Helper Functions (KV with fallback)
+// ============================================
+
+async function saveModel(model: LoRAModel): Promise<void> {
+  if (isKVAvailable()) {
+    try {
+      // 모델 데이터 저장
+      await kv.set(`${LORA_MODEL_PREFIX}${model.id}`, model);
+      // 모델 ID 리스트에 추가
+      await kv.sadd(LORA_MODEL_LIST_KEY, model.id);
+      console.log(`Model ${model.id} saved to KV`);
+    } catch (error) {
+      console.error('KV save error, falling back to memory:', error);
+      localModels.set(model.id, model);
+    }
+  } else {
+    localModels.set(model.id, model);
+  }
+}
+
+async function getModel(modelId: string): Promise<LoRAModel | null> {
+  if (isKVAvailable()) {
+    try {
+      const model = await kv.get<LoRAModel>(`${LORA_MODEL_PREFIX}${modelId}`);
+      return model;
+    } catch (error) {
+      console.error('KV get error, falling back to memory:', error);
+      return localModels.get(modelId) || null;
+    }
+  } else {
+    return localModels.get(modelId) || null;
+  }
+}
+
+async function getAllModels(): Promise<LoRAModel[]> {
+  if (isKVAvailable()) {
+    try {
+      const modelIds = await kv.smembers(LORA_MODEL_LIST_KEY);
+      if (!modelIds || modelIds.length === 0) {
+        return [];
+      }
+
+      const models: LoRAModel[] = [];
+      for (const id of modelIds) {
+        const model = await kv.get<LoRAModel>(`${LORA_MODEL_PREFIX}${id}`);
+        if (model) {
+          models.push(model);
+        }
+      }
+      return models.sort((a, b) => b.createdAt - a.createdAt);
+    } catch (error) {
+      console.error('KV getAllModels error, falling back to memory:', error);
+      return Array.from(localModels.values());
+    }
+  } else {
+    return Array.from(localModels.values());
+  }
+}
+
+async function deleteModelFromStorage(modelId: string): Promise<boolean> {
+  if (isKVAvailable()) {
+    try {
+      await kv.del(`${LORA_MODEL_PREFIX}${modelId}`);
+      await kv.srem(LORA_MODEL_LIST_KEY, modelId);
+      console.log(`Model ${modelId} deleted from KV`);
+      return true;
+    } catch (error) {
+      console.error('KV delete error, falling back to memory:', error);
+      return localModels.delete(modelId);
+    }
+  } else {
+    return localModels.delete(modelId);
+  }
+}
 
 // ============================================
 // LoRA Training Service
@@ -48,6 +133,17 @@ export class LoRATrainingService {
     const modelId = uuidv4();
     const triggerWord = request.triggerWord || `STYLE_${modelId.slice(0, 8).toUpperCase()}`;
 
+    // 모델 슬러그 미리 생성
+    let modelSlug = request.name
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+
+    if (!modelSlug || modelSlug.length < 2) {
+      modelSlug = `lora-model-${modelId.slice(0, 8)}`;
+    }
+
     // 모델 초기 상태 생성
     const model: LoRAModel = {
       id: modelId,
@@ -58,9 +154,10 @@ export class LoRATrainingService {
       triggerWord,
       createdAt: Date.now(),
       estimatedCost: this.estimateCost(request.images.length, request.trainingSteps),
+      modelSlug, // 슬러그 저장
     };
 
-    loraModels.set(modelId, model);
+    await saveModel(model);
 
     try {
       // 1. 이미지들을 ZIP 파일로 묶어서 업로드
@@ -68,21 +165,9 @@ export class LoRATrainingService {
 
       model.trainingImages = [zipUrl];
       model.status = 'training';
-      loraModels.set(modelId, model);
+      await saveModel(model);
 
       // 2. Replicate에 모델 생성 (destination용)
-      // 한글 모델 이름 처리: 영문/숫자만 남기고, 없으면 modelId 사용
-      let modelSlug = request.name
-        .toLowerCase()
-        .replace(/[^a-z0-9-]/g, '-')
-        .replace(/-+/g, '-')
-        .replace(/^-|-$/g, ''); // 앞뒤 하이픈 제거
-
-      // 한글만 입력한 경우 등 slug가 비어있으면 고유 ID 사용
-      if (!modelSlug || modelSlug.length < 2) {
-        modelSlug = `lora-model-${modelId.slice(0, 8)}`;
-      }
-
       const destination = `${process.env.REPLICATE_USERNAME}/${modelSlug}` as `${string}/${string}`;
       console.log('Model slug:', modelSlug, 'from name:', request.name);
 
@@ -133,7 +218,8 @@ export class LoRATrainingService {
 
       // 학습 ID 저장
       model.replicateModelId = training.id;
-      loraModels.set(modelId, model);
+      model.replicateDestination = destination;
+      await saveModel(model);
 
       return {
         success: true,
@@ -155,15 +241,7 @@ export class LoRATrainingService {
 
       // destination 관련 에러 처리
       if (errorMessage.includes('destination does not exist') || errorMessage.includes('does not exist')) {
-        let errModelSlug = request.name
-          .toLowerCase()
-          .replace(/[^a-z0-9-]/g, '-')
-          .replace(/-+/g, '-')
-          .replace(/^-|-$/g, '');
-        if (!errModelSlug || errModelSlug.length < 2) {
-          errModelSlug = `lora-model-${modelId.slice(0, 8)}`;
-        }
-        errorMessage = `모델 생성 실패. replicate.com에서 '${process.env.REPLICATE_USERNAME}/${errModelSlug}' 모델을 직접 생성해주세요. (Models → Create model)`;
+        errorMessage = `모델 생성 실패. replicate.com에서 '${process.env.REPLICATE_USERNAME}/${modelSlug}' 모델을 직접 생성해주세요. (Models → Create model)`;
       } else if (errorMessage.includes('permission') || errorMessage.includes('403') || errorMessage.includes('Forbidden')) {
         errorMessage = 'Replicate 계정 권한이 없습니다. API 토큰 권한을 확인해주세요.';
       } else if (errorMessage.includes('401') || errorMessage.includes('Unauthorized')) {
@@ -177,7 +255,7 @@ export class LoRATrainingService {
       }
 
       model.error = errorMessage;
-      loraModels.set(modelId, model);
+      await saveModel(model);
 
       return {
         success: false,
@@ -190,7 +268,7 @@ export class LoRATrainingService {
    * 학습 상태 확인
    */
   async checkTrainingStatus(modelId: string): Promise<LoRAModel | null> {
-    const model = loraModels.get(modelId);
+    const model = await getModel(modelId);
     if (!model || !model.replicateModelId) return null;
 
     try {
@@ -209,7 +287,7 @@ export class LoRATrainingService {
       }
       // 'starting', 'processing' -> 여전히 'training' 상태
 
-      loraModels.set(modelId, model);
+      await saveModel(model);
       return model;
     } catch (error) {
       console.error('Failed to check training status:', error);
@@ -224,7 +302,7 @@ export class LoRATrainingService {
     model: LoRAModel,
     prompt: string,
     pose: PoseType,
-    garmentImage?: string,
+    _garmentImage?: string,
     seed?: number
   ): Promise<string> {
     if (model.status !== 'completed' || !model.replicateVersionId) {
@@ -233,9 +311,12 @@ export class LoRATrainingService {
 
     const fullPrompt = `${model.triggerWord}, ${prompt}, ${generateIPhoneStylePrompt(pose)}`;
 
+    // modelSlug가 있으면 사용, 없으면 이름에서 생성
+    const slug = model.modelSlug || model.name.toLowerCase().replace(/\s+/g, '-');
+
     // 학습된 LoRA 모델로 생성
     const output = await this.replicate.run(
-      `${process.env.REPLICATE_USERNAME || 'user'}/${model.name.toLowerCase().replace(/\s+/g, '-')}:${model.replicateVersionId}` as `${string}/${string}:${string}`,
+      `${process.env.REPLICATE_USERNAME || 'user'}/${slug}:${model.replicateVersionId}` as `${string}/${string}:${string}`,
       {
         input: {
           prompt: fullPrompt,
@@ -258,22 +339,87 @@ export class LoRATrainingService {
   /**
    * 모든 LoRA 모델 목록
    */
-  getAllModels(): LoRAModel[] {
-    return Array.from(loraModels.values());
+  async getAllModels(): Promise<LoRAModel[]> {
+    return getAllModels();
   }
 
   /**
    * 특정 모델 가져오기
    */
-  getModel(modelId: string): LoRAModel | undefined {
-    return loraModels.get(modelId);
+  async getModel(modelId: string): Promise<LoRAModel | null> {
+    return getModel(modelId);
   }
 
   /**
    * 모델 삭제
    */
-  deleteModel(modelId: string): boolean {
-    return loraModels.delete(modelId);
+  async deleteModel(modelId: string): Promise<boolean> {
+    return deleteModelFromStorage(modelId);
+  }
+
+  /**
+   * Replicate에서 기존 모델들 동기화
+   */
+  async syncModelsFromReplicate(): Promise<{ synced: number; models: LoRAModel[] }> {
+    const username = process.env.REPLICATE_USERNAME;
+    if (!username) {
+      throw new Error('REPLICATE_USERNAME이 설정되지 않았습니다.');
+    }
+
+    try {
+      // Replicate API로 내 모델 목록 가져오기
+      const response = await fetch(
+        `https://api.replicate.com/v1/models?owner=${username}`,
+        {
+          headers: {
+            'Authorization': `Token ${process.env.REPLICATE_API_TOKEN}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Replicate API 오류: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const syncedModels: LoRAModel[] = [];
+
+      for (const replicateModel of data.results || []) {
+        // 이미 저장된 모델인지 확인 (modelSlug로 비교)
+        const existingModels = await getAllModels();
+        const exists = existingModels.some(
+          m => m.modelSlug === replicateModel.name || m.replicateDestination === `${username}/${replicateModel.name}`
+        );
+
+        if (!exists && replicateModel.latest_version) {
+          // 새로운 모델 추가
+          const newModel: LoRAModel = {
+            id: uuidv4(),
+            name: replicateModel.name,
+            description: replicateModel.description || '',
+            status: 'completed',
+            trainingImages: [],
+            triggerWord: `STYLE_${replicateModel.name.toUpperCase().slice(0, 8)}`,
+            createdAt: new Date(replicateModel.created_at).getTime(),
+            completedAt: new Date(replicateModel.created_at).getTime(),
+            modelSlug: replicateModel.name,
+            replicateDestination: `${username}/${replicateModel.name}`,
+            replicateVersionId: replicateModel.latest_version?.id,
+          };
+
+          await saveModel(newModel);
+          syncedModels.push(newModel);
+        }
+      }
+
+      return {
+        synced: syncedModels.length,
+        models: syncedModels,
+      };
+    } catch (error) {
+      console.error('Replicate 모델 동기화 오류:', error);
+      throw error;
+    }
   }
 
   /**
@@ -391,4 +537,9 @@ export function checkLoRATrainingRequirements(): { valid: boolean; error?: strin
     return { valid: false, error: 'REPLICATE_USERNAME 환경 변수가 설정되지 않았습니다. Replicate 계정 사용자명을 설정해주세요.' };
   }
   return { valid: true };
+}
+
+// 유틸리티: KV 연결 상태 확인
+export function isKVConnected(): boolean {
+  return isKVAvailable();
 }

@@ -63,6 +63,10 @@ export default function LoRATraining({ onModelReady }: LoRATrainingProps) {
   const [isScraping, setIsScraping] = useState(false);
   const [scrapeProgress, setScrapeProgress] = useState<string | null>(null);
 
+  // KV 및 동기화 관련 상태
+  const [kvConnected, setKvConnected] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -75,6 +79,7 @@ export default function LoRATraining({ onModelReady }: LoRATrainingProps) {
         if (data.success) {
           setModels(data.models);
           setAvailable(data.available);
+          setKvConnected(data.kvConnected || false);
         }
       } catch (err) {
         console.error('Failed to load LoRA models:', err);
@@ -82,6 +87,34 @@ export default function LoRATraining({ onModelReady }: LoRATrainingProps) {
     }
     loadModels();
   }, []);
+
+  // Replicate에서 모델 동기화
+  const handleSyncFromReplicate = async () => {
+    setIsSyncing(true);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/lora?sync=true');
+      const data = await res.json();
+
+      if (data.success) {
+        setModels(data.models);
+        setKvConnected(data.kvConnected || false);
+        if (data.synced > 0) {
+          setError(`${data.synced}개의 새 모델을 Replicate에서 가져왔습니다.`);
+        } else {
+          setError('모든 모델이 이미 동기화되어 있습니다.');
+        }
+      } else {
+        setError(data.error || '동기화에 실패했습니다.');
+      }
+    } catch (err) {
+      console.error('Sync error:', err);
+      setError('동기화 중 오류가 발생했습니다.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // 학습 상태 폴링
   useEffect(() => {
@@ -387,14 +420,40 @@ export default function LoRATraining({ onModelReady }: LoRATrainingProps) {
   return (
     <div className="space-y-6">
       {/* 섹션 헤더 */}
-      <div className="flex items-center gap-2">
-        <svg className="w-5 h-5" style={{ color: 'var(--accent)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-        </svg>
-        <h3 className="font-semibold">스타일 학습 (LoRA)</h3>
-        <span className="text-xs px-2 py-0.5 rounded" style={{ background: 'var(--accent-light)', color: 'var(--accent)' }}>
-          Beta
-        </span>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <svg className="w-5 h-5" style={{ color: 'var(--accent)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+          <h3 className="font-semibold">스타일 학습 (LoRA)</h3>
+          <span className="text-xs px-2 py-0.5 rounded" style={{ background: 'var(--accent-light)', color: 'var(--accent)' }}>
+            Beta
+          </span>
+          {kvConnected && (
+            <span className="text-xs px-2 py-0.5 rounded" style={{ background: 'rgba(34, 197, 94, 0.2)', color: 'rgb(34, 197, 94)' }}>
+              DB 연결됨
+            </span>
+          )}
+        </div>
+        <button
+          onClick={handleSyncFromReplicate}
+          disabled={isSyncing}
+          className="text-xs px-3 py-1.5 rounded flex items-center gap-1.5 hover:bg-[var(--background-tertiary)] transition-colors"
+          style={{ color: 'var(--foreground-muted)' }}
+          title="Replicate에서 기존 학습된 모델 가져오기"
+        >
+          {isSyncing ? (
+            <svg className="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
+              <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" className="opacity-75" />
+            </svg>
+          ) : (
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          )}
+          {isSyncing ? '동기화 중...' : 'Replicate 동기화'}
+        </button>
       </div>
 
       {/* 현재 학습 중인 모델 상태 */}

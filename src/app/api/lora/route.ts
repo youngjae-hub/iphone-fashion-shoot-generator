@@ -3,6 +3,7 @@ import {
   getLoRATrainingService,
   isLoRATrainingAvailable,
   checkLoRATrainingRequirements,
+  isKVConnected,
 } from '@/lib/providers/lora-training';
 import { LoRATrainingRequest } from '@/types';
 
@@ -16,8 +17,33 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const modelId = searchParams.get('modelId');
     const checkStatus = searchParams.get('checkStatus') === 'true';
+    const syncFromReplicate = searchParams.get('sync') === 'true';
 
     const service = getLoRATrainingService();
+
+    // Replicate에서 모델 동기화
+    if (syncFromReplicate) {
+      try {
+        const result = await service.syncModelsFromReplicate();
+        const allModels = await service.getAllModels();
+        return NextResponse.json({
+          success: true,
+          synced: result.synced,
+          syncedModels: result.models,
+          models: allModels,
+          kvConnected: isKVConnected(),
+        });
+      } catch (syncError) {
+        console.error('Sync error:', syncError);
+        return NextResponse.json(
+          {
+            success: false,
+            error: syncError instanceof Error ? syncError.message : '동기화 실패'
+          },
+          { status: 500 }
+        );
+      }
+    }
 
     // 특정 모델 상태 확인
     if (modelId) {
@@ -32,7 +58,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ success: true, model });
       }
 
-      const model = service.getModel(modelId);
+      const model = await service.getModel(modelId);
       if (!model) {
         return NextResponse.json(
           { success: false, error: '모델을 찾을 수 없습니다.' },
@@ -43,13 +69,14 @@ export async function GET(request: NextRequest) {
     }
 
     // 모든 모델 목록
-    const models = service.getAllModels();
+    const models = await service.getAllModels();
     const available = await isLoRATrainingAvailable();
 
     return NextResponse.json({
       success: true,
       models,
       available,
+      kvConnected: isKVConnected(),
     });
   } catch (error) {
     console.error('LoRA GET error:', error);
@@ -158,7 +185,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     const service = getLoRATrainingService();
-    const deleted = service.deleteModel(modelId);
+    const deleted = await service.deleteModel(modelId);
 
     if (!deleted) {
       return NextResponse.json(
