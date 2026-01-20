@@ -71,11 +71,11 @@ export class LoRATrainingService {
       loraModels.set(modelId, model);
 
       // 2. Replicate 학습 시작
-      // flux-dev-lora-trainer 모델 사용
+      // flux-dev-lora-trainer 모델 사용 (최신 버전)
       const training = await this.replicate.trainings.create(
         'ostris',
         'flux-dev-lora-trainer',
-        '885394e6a31c6f349dd4f9e6e7ffbabd8d9840ab2c4a6c2fdbf8d13ec0c407cf',
+        '26dce37af90b9d997eeb970d92e47de3064d46c300504ae376c75bef6a9022d2',
         {
           destination: `${process.env.REPLICATE_USERNAME || 'user'}/${request.name.toLowerCase().replace(/\s+/g, '-')}`,
           input: {
