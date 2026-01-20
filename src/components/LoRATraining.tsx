@@ -791,7 +791,7 @@ export default function LoRATraining({ onModelReady }: LoRATrainingProps) {
               )}
               <div className="flex items-center gap-4 text-xs" style={{ color: 'var(--foreground-muted)' }}>
                 <span>트리거: <code className="px-1 rounded" style={{ background: 'var(--background-tertiary)' }}>{model.triggerWord}</code></span>
-                <span>이미지: {model.trainingImages.length}장</span>
+                <span>이미지: {model.trainingImageCount || model.trainingImages.length}장</span>
                 {model.estimatedCost && <span>비용: ${model.estimatedCost}</span>}
               </div>
               {model.error && (

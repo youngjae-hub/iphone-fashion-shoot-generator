@@ -151,6 +151,7 @@ export class LoRATrainingService {
       description: request.description,
       status: 'uploading',
       trainingImages: [],
+      trainingImageCount: request.images.length, // 원본 이미지 개수 저장
       triggerWord,
       createdAt: Date.now(),
       estimatedCost: this.estimateCost(request.images.length, request.trainingSteps),

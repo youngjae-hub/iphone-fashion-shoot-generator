@@ -152,7 +152,8 @@ export interface LoRAModel {
   replicateVersionId?: string; // 학습 완료 후 버전 ID
   replicateDestination?: string; // Replicate 모델 경로 (username/model-slug)
   modelSlug?: string; // 모델 슬러그 (URL-safe 이름)
-  trainingImages: string[]; // 학습에 사용된 이미지 URL들
+  trainingImages: string[]; // 학습에 사용된 이미지 URL들 (ZIP URL)
+  trainingImageCount?: number; // 실제 학습에 사용된 이미지 개수
   triggerWord: string; // LoRA 트리거 단어 (예: "ABLYSTYLE")
   createdAt: number;
   completedAt?: number;
