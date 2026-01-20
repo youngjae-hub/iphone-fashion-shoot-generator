@@ -97,6 +97,9 @@ export class LoRATrainingService {
 
       // 3. Replicate 학습 시작
       // flux-dev-lora-trainer 모델 사용 (최신 버전)
+      console.log('Starting training with destination:', destination);
+      console.log('Input images URL:', zipUrl);
+
       const training = await this.replicate.trainings.create(
         'ostris',
         'flux-dev-lora-trainer',
@@ -117,6 +120,8 @@ export class LoRATrainingService {
         }
       );
 
+      console.log('Training started successfully:', training.id);
+
       // 학습 ID 저장
       model.replicateModelId = training.id;
       loraModels.set(modelId, model);
@@ -130,7 +135,14 @@ export class LoRATrainingService {
       model.status = 'failed';
 
       // 에러 메시지 파싱
+      console.error('LoRA Training error:', error);
       let errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      // 에러 객체에서 추가 정보 추출
+      if (error && typeof error === 'object' && 'response' in error) {
+        const response = (error as { response?: { status?: number; data?: unknown } }).response;
+        console.error('Error response:', response);
+      }
 
       // destination 관련 에러 처리
       if (errorMessage.includes('destination does not exist')) {
@@ -139,6 +151,10 @@ export class LoRATrainingService {
         errorMessage = 'Replicate 계정 권한이 없습니다. API 토큰과 사용자명을 확인해주세요.';
       } else if (errorMessage.includes('500') || errorMessage.includes('Internal Server')) {
         errorMessage = 'Replicate 서버에 일시적인 문제가 있습니다. 잠시 후 다시 시도해주세요.';
+      } else if (errorMessage.includes('업로드')) {
+        // 업로드 에러는 그대로 전달
+      } else if (errorMessage.includes('timeout') || errorMessage.includes('ETIMEDOUT')) {
+        errorMessage = '요청 시간이 초과되었습니다. 이미지 수를 줄이거나 다시 시도해주세요.';
       }
 
       model.error = errorMessage;
@@ -293,12 +309,16 @@ export class LoRATrainingService {
     }
 
     // Replicate files API로 ZIP 업로드
-    const file = await this.replicate.files.create(zipBuffer, {
-      type: 'application/zip',
-    });
+    console.log(`Uploading ZIP file: ${zipBuffer.length} bytes, ${base64Images.length} images`);
 
-    console.log('ZIP uploaded successfully:', file.urls.get);
-    return file.urls.get;
+    try {
+      const file = await this.replicate.files.create(zipBuffer);
+      console.log('ZIP uploaded successfully:', file.urls.get);
+      return file.urls.get;
+    } catch (uploadError) {
+      console.error('File upload error:', uploadError);
+      throw new Error(`이미지 업로드 실패: ${uploadError instanceof Error ? uploadError.message : 'Unknown error'}`);
+    }
   }
 }
 
