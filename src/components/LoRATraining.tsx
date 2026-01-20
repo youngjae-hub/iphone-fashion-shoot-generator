@@ -11,15 +11,15 @@ interface LoRATrainingProps {
 // 이미지 소스 타입
 type ImageSourceTab = 'upload' | 'url';
 
-// 이미지 리사이즈 함수 (학습용으로 최적화)
-async function resizeImageForTraining(base64: string, maxSize: number = 1024): Promise<string> {
+// 이미지 리사이즈 함수 (학습용으로 최적화 - Vercel 4.5MB 제한 대응)
+async function resizeImageForTraining(base64: string, maxSize: number = 768): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement('canvas');
       let { width, height } = img;
 
-      // 최대 크기 제한
+      // 최대 크기 제한 (768px로 줄여서 payload 크기 감소)
       if (width > maxSize || height > maxSize) {
         if (width > height) {
           height = (height / width) * maxSize;
@@ -30,13 +30,13 @@ async function resizeImageForTraining(base64: string, maxSize: number = 1024): P
         }
       }
 
-      canvas.width = width;
-      canvas.height = height;
+      canvas.width = Math.round(width);
+      canvas.height = Math.round(height);
       const ctx = canvas.getContext('2d');
-      ctx?.drawImage(img, 0, 0, width, height);
+      ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-      // JPEG로 압축 (품질 85%)
-      resolve(canvas.toDataURL('image/jpeg', 0.85));
+      // JPEG로 압축 (품질 70%로 더 압축)
+      resolve(canvas.toDataURL('image/jpeg', 0.7));
     };
     img.onerror = () => resolve(base64); // 실패 시 원본 반환
     img.src = base64;
@@ -249,24 +249,41 @@ export default function LoRATraining({ onModelReady }: LoRATrainingProps) {
     setError(null);
 
     try {
-      // 이미지 리사이즈 (업로드 크기 최적화)
-      setError('이미지 최적화 중...');
+      // 이미지 리사이즈 (업로드 크기 최적화 - 768px, JPEG 70%)
+      setError(`이미지 ${trainingImages.length}장 최적화 중...`);
       const resizedImages = await Promise.all(
-        trainingImages.map((img) => resizeImageForTraining(img.preview, 1024))
+        trainingImages.map((img) => resizeImageForTraining(img.preview, 768))
       );
       setError(null);
+
+      // payload 크기 계산 (디버그용)
+      const payload = JSON.stringify({
+        name: modelName,
+        description: modelDescription,
+        images: resizedImages,
+        triggerWord: triggerWord || undefined,
+        trainingSteps,
+      });
+      const payloadSizeMB = (new Blob([payload]).size / 1024 / 1024).toFixed(2);
+      console.log(`Payload size: ${payloadSizeMB}MB (${resizedImages.length} images)`);
+
+      // Vercel 제한 체크 (4.5MB)
+      if (parseFloat(payloadSizeMB) > 4) {
+        throw new Error(`요청 크기(${payloadSizeMB}MB)가 너무 큽니다. 이미지 수를 줄여주세요.`);
+      }
 
       const res = await fetch('/api/lora', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: modelName,
-          description: modelDescription,
-          images: resizedImages,
-          triggerWord: triggerWord || undefined,
-          trainingSteps,
-        }),
+        body: payload,
       });
+
+      // HTTP 에러 체크
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('API Error:', res.status, errorText);
+        throw new Error(`API 오류 (${res.status}): ${errorText.slice(0, 200)}`);
+      }
 
       const data = await res.json();
 
@@ -281,8 +298,17 @@ export default function LoRATraining({ onModelReady }: LoRATrainingProps) {
       } else {
         setError(data.error || '학습 시작에 실패했습니다.');
       }
-    } catch (err) {
-      setError('서버 오류가 발생했습니다.');
+    } catch (err: unknown) {
+      // 실제 에러 메시지 표시
+      let errorMsg = '서버 오류가 발생했습니다.';
+      if (err instanceof Error) {
+        errorMsg = err.message;
+      }
+      // fetch 실패 시 추가 정보
+      if (err instanceof TypeError && err.message.includes('fetch')) {
+        errorMsg = '네트워크 오류: 요청이 너무 크거나 서버에 연결할 수 없습니다.';
+      }
+      setError(errorMsg);
       console.error('Training error:', err);
     } finally {
       setIsTraining(false);
