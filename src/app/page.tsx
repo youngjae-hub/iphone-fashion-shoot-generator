@@ -270,33 +270,29 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Header */}
-      <header className="border-b" style={{ borderColor: 'var(--border)', background: 'var(--background-secondary)' }}>
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: 'var(--accent)' }}>
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
+      {/* Header - Contemporary */}
+      <header className="border-b" style={{ borderColor: 'var(--border)' }}>
+        <div className="px-6 py-4 flex items-center justify-between">
+          {/* Logo */}
+          <div className="flex items-center gap-4">
+            <div className="flex flex-col">
+              <span className="logo-text" style={{ fontSize: '1.5rem' }}>rapport.</span>
+              <span className="logo-subtitle" style={{ marginTop: '-2px' }}>STUDIO</span>
             </div>
-            <div>
-              <h1 className="font-bold text-lg">iPhone Style Fashion Generator</h1>
-              <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
-                AI 패션 룩북 이미지 생성
-              </p>
-            </div>
+            <div className="hidden sm:block h-8 w-px" style={{ background: 'var(--border)' }} />
+            <span className="hidden sm:block text-xs" style={{ color: 'var(--foreground-muted)' }}>
+              AI Fashion Lookbook Generator
+            </span>
           </div>
 
           {/* Current Provider Badge */}
-          <div className="hidden sm:flex items-center gap-2">
-            <span className="provider-badge">
-              {providerConfig.imageGeneration}
-            </span>
-            <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>+</span>
-            <span className="provider-badge">
-              {providerConfig.tryOn}
-            </span>
+          <div className="hidden sm:flex items-center gap-3">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full" style={{ background: 'var(--background-tertiary)', border: '1px solid var(--border)' }}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--success)' }} />
+              <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                {providerConfig.imageGeneration}
+              </span>
+            </div>
           </div>
         </div>
       </header>
@@ -304,25 +300,25 @@ export default function Home() {
       {/* Main Content */}
       <main className="flex-1 flex">
         {/* Sidebar */}
-        <aside className="w-full md:w-96 border-r flex-shrink-0 overflow-y-auto" style={{ borderColor: 'var(--border)', background: 'var(--background-secondary)' }}>
-          <div className="p-4 space-y-6">
-            {/* Tab Navigation */}
-            <div className="flex flex-wrap rounded-lg p-1 gap-1" style={{ background: 'var(--background-tertiary)' }}>
+        <aside className="w-full md:w-[360px] border-r flex-shrink-0 overflow-y-auto" style={{ borderColor: 'var(--border)' }}>
+          <div className="p-5 space-y-5">
+            {/* Tab Navigation - Contemporary */}
+            <div className="flex flex-wrap gap-1">
               {[
-                { id: 'upload', label: '업로드' },
-                { id: 'settings', label: '설정' },
-                { id: 'prompt', label: '프롬프트' },
-                { id: 'provider', label: 'AI 모델' },
-                { id: 'training', label: '학습' },
-                { id: 'history', label: '히스토리' },
+                { id: 'upload', label: 'Upload' },
+                { id: 'settings', label: 'Settings' },
+                { id: 'prompt', label: 'Prompt' },
+                { id: 'provider', label: 'Model' },
+                { id: 'training', label: 'Train' },
+                { id: 'history', label: 'History' },
               ].map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as typeof activeTab)}
-                  className={`flex-1 py-2 px-2 rounded-md text-xs font-medium transition-all ${
+                  className={`py-1.5 px-3 rounded text-xs font-medium transition-all ${
                     activeTab === tab.id
-                      ? 'bg-[var(--accent)] text-white'
-                      : 'hover:bg-[var(--background-secondary)]'
+                      ? 'bg-[var(--foreground)] text-[var(--background)]'
+                      : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)] hover:bg-[var(--accent-light)]'
                   }`}
                 >
                   {tab.label}
@@ -403,10 +399,13 @@ export default function Home() {
               </div>
             )}
 
-            {/* Generate Button */}
-            <div className="pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
+            {/* Generate Button - Contemporary */}
+            <div className="pt-5 mt-5 border-t" style={{ borderColor: 'var(--border)' }}>
               {error && (
-                <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--error)' }}>
+                <div className="mb-4 p-3 rounded text-sm flex items-center gap-2" style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--error)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
                   {error}
                 </div>
               )}
@@ -414,35 +413,37 @@ export default function Home() {
               <button
                 onClick={handleGenerate}
                 disabled={isGenerating || uploadedImages.length === 0}
-                className="btn-primary w-full py-3 flex items-center justify-center gap-2"
+                className="w-full py-3 rounded-md font-medium text-sm transition-all flex items-center justify-center gap-2"
+                style={{
+                  background: isGenerating || uploadedImages.length === 0 ? 'var(--border)' : 'var(--foreground)',
+                  color: isGenerating || uploadedImages.length === 0 ? 'var(--foreground-muted)' : 'var(--background)',
+                  cursor: isGenerating || uploadedImages.length === 0 ? 'not-allowed' : 'pointer',
+                }}
               >
                 {isGenerating ? (
                   <>
-                    <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
-                      <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" className="opacity-75" />
+                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.3" />
+                      <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
                     </svg>
-                    생성 중...
+                    Generating...
                   </>
                 ) : (
                   <>
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                    이미지 생성 ({settings.totalShots}컷)
+                    Generate {settings.totalShots} Images
                   </>
                 )}
               </button>
 
-              <p className="text-xs text-center mt-2" style={{ color: 'var(--foreground-muted)' }}>
-                {settings.poses.length}개 포즈 × {settings.shotsPerPose}컷
+              <p className="text-[11px] text-center mt-2" style={{ color: 'var(--foreground-muted)' }}>
+                {settings.poses.length} poses × {settings.shotsPerPose} shots each
               </p>
             </div>
           </div>
         </aside>
 
-        {/* Result Area */}
-        <div className="flex-1 p-6 overflow-y-auto">
+        {/* Result Area - Clean */}
+        <div className="flex-1 p-6 overflow-y-auto" style={{ background: 'var(--background)' }}>
           <ResultGallery
             images={generatedImages}
             isGenerating={isGenerating}
@@ -452,6 +453,14 @@ export default function Home() {
           />
         </div>
       </main>
+
+      {/* Footer */}
+      <footer className="border-t py-3 px-6" style={{ borderColor: 'var(--border)' }}>
+        <div className="flex items-center justify-between text-[11px]" style={{ color: 'var(--foreground-muted)' }}>
+          <span>© 2025 rapport. STUDIO</span>
+          <span>Powered by AI</span>
+        </div>
+      </footer>
     </div>
   );
 }
