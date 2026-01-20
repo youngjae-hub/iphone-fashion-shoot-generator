@@ -71,8 +71,20 @@ export class LoRATrainingService {
       loraModels.set(modelId, model);
 
       // 2. Replicate에 모델 생성 (destination용)
-      const modelSlug = request.name.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-');
+      // 한글 모델 이름 처리: 영문/숫자만 남기고, 없으면 modelId 사용
+      let modelSlug = request.name
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, ''); // 앞뒤 하이픈 제거
+
+      // 한글만 입력한 경우 등 slug가 비어있으면 고유 ID 사용
+      if (!modelSlug || modelSlug.length < 2) {
+        modelSlug = `lora-model-${modelId.slice(0, 8)}`;
+      }
+
       const destination = `${process.env.REPLICATE_USERNAME}/${modelSlug}` as `${string}/${string}`;
+      console.log('Model slug:', modelSlug, 'from name:', request.name);
 
       // 모델이 없으면 생성 (visibility: public으로 변경 - private은 유료 플랜 필요)
       try {
@@ -149,8 +161,15 @@ export class LoRATrainingService {
 
       // destination 관련 에러 처리
       if (errorMessage.includes('destination does not exist') || errorMessage.includes('does not exist')) {
-        const modelSlug = request.name.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-');
-        errorMessage = `모델 생성 실패. replicate.com에서 '${process.env.REPLICATE_USERNAME}/${modelSlug}' 모델을 직접 생성해주세요. (Models → Create model)`;
+        let errModelSlug = request.name
+          .toLowerCase()
+          .replace(/[^a-z0-9-]/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '');
+        if (!errModelSlug || errModelSlug.length < 2) {
+          errModelSlug = `lora-model-${modelId.slice(0, 8)}`;
+        }
+        errorMessage = `모델 생성 실패. replicate.com에서 '${process.env.REPLICATE_USERNAME}/${errModelSlug}' 모델을 직접 생성해주세요. (Models → Create model)`;
       } else if (errorMessage.includes('permission') || errorMessage.includes('403') || errorMessage.includes('Forbidden')) {
         errorMessage = 'Replicate 계정 권한이 없습니다. API 토큰 권한을 확인해주세요.';
       } else if (errorMessage.includes('401') || errorMessage.includes('Unauthorized')) {
