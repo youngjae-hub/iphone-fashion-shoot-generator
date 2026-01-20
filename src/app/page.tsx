@@ -134,6 +134,7 @@ export default function Home() {
             poses: settings.poses,
             settings,
             providers: providerConfig,
+            promptSettings, // 프롬프트 커스터마이징 설정 추가
           }),
         });
 

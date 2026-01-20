@@ -82,7 +82,7 @@ The first ${styleRefCount} image(s) show the EXACT photography style you must re
 - Add slight motion blur or soft focus for realism
 - Include natural shadows and lighting inconsistencies
 `}
-
+${options.customPrompt ? `\nADDITIONAL STYLE:\n${options.customPrompt}\n` : ''}
 MODEL REQUIREMENTS:
 - Korean female model in early 20s
 - Face cropped above lips (show only chin and lips for anonymity)

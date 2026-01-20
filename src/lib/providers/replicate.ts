@@ -43,7 +43,11 @@ export class FluxImageProvider implements IImageGenerationProvider {
 
   async generateModelImage(options: ModelGenerationOptions): Promise<string> {
     const replicate = getReplicateClient();
-    const prompt = generateIPhoneStylePrompt(options.pose, options.style);
+    // customPrompt가 있으면 기본 프롬프트와 합치고, 없으면 기본 프롬프트만 사용
+    const basePrompt = generateIPhoneStylePrompt(options.pose, options.style);
+    const prompt = options.customPrompt
+      ? `${basePrompt}, ${options.customPrompt}`
+      : basePrompt;
 
     // SDXL Turbo 사용 - 더 빠르고 Rate limit 덜 엄격
     const output = await replicate.run(
@@ -51,7 +55,7 @@ export class FluxImageProvider implements IImageGenerationProvider {
       {
         input: {
           prompt,
-          negative_prompt: DEFAULT_NEGATIVE_PROMPT,
+          negative_prompt: options.negativePrompt || DEFAULT_NEGATIVE_PROMPT,
           width: 768,
           height: 1024,
           num_inference_steps: 4,

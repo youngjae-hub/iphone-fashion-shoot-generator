@@ -27,6 +27,7 @@ export interface ModelGenerationOptions {
   negativePrompt?: string;
   garmentImage?: string; // base64 이미지 - 이 옷을 입힌 모델 생성
   styleReferenceImages?: string[]; // base64 이미지 배열 - 이 스타일들을 참조 (최대 10장)
+  customPrompt?: string; // 사용자 정의 프롬프트 (프롬프트 에디터에서 설정)
 }
 
 export interface BackgroundOptions {

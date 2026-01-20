@@ -4,17 +4,58 @@ import {
   getImageGenerationProvider,
   getTryOnProvider,
 } from '@/lib/providers';
-import { GenerationRequest, GeneratedImage, PoseType } from '@/types';
+import {
+  GenerationRequest,
+  GeneratedImage,
+  CustomPromptSettings,
+  DEFAULT_PROMPT_TEMPLATES,
+  STYLE_MODIFIERS,
+} from '@/types';
 
 // Vercel Serverless Function 설정
 // Hobby 플랜: 최대 60초, Pro 플랜: 최대 300초
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
+// 프롬프트 설정에서 최종 프롬프트 생성
+function buildPromptFromSettings(promptSettings?: CustomPromptSettings): { basePrompt: string; negativePrompt: string } {
+  if (!promptSettings) {
+    return {
+      basePrompt: '',
+      negativePrompt: 'blurry, low quality, distorted, ugly, deformed, bad anatomy, watermark, signature',
+    };
+  }
+
+  let basePrompt = '';
+
+  if (promptSettings.useCustomPrompt) {
+    basePrompt = promptSettings.basePrompt;
+  } else if (promptSettings.templateId) {
+    const template = DEFAULT_PROMPT_TEMPLATES.find(t => t.id === promptSettings.templateId);
+    basePrompt = template?.basePrompt || '';
+  }
+
+  // 스타일 수식어 추가
+  if (promptSettings.styleModifiers && promptSettings.styleModifiers.length > 0) {
+    const modifierPrompts = promptSettings.styleModifiers
+      .map(id => STYLE_MODIFIERS.find(m => m.id === id)?.prompt)
+      .filter(Boolean)
+      .join(', ');
+    if (modifierPrompts) {
+      basePrompt = basePrompt ? `${basePrompt}, ${modifierPrompts}` : modifierPrompts;
+    }
+  }
+
+  return {
+    basePrompt,
+    negativePrompt: promptSettings.negativePrompt || 'blurry, low quality, distorted, ugly, deformed, bad anatomy, watermark, signature',
+  };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { garmentImage, styleReferenceImages, poses, settings, providers } = body as GenerationRequest & { styleReferenceImages?: string[] };
+    const { garmentImage, styleReferenceImages, poses, settings, providers, promptSettings } = body as GenerationRequest & { styleReferenceImages?: string[]; promptSettings?: CustomPromptSettings };
 
     if (!garmentImage) {
       return NextResponse.json(
@@ -61,6 +102,9 @@ export async function POST(request: NextRequest) {
 
     const generatedImages: GeneratedImage[] = [];
 
+    // 프롬프트 설정에서 최종 프롬프트 빌드
+    const { basePrompt, negativePrompt } = buildPromptFromSettings(promptSettings);
+
     // 각 포즈별로 이미지 생성
     for (const pose of poses) {
       for (let i = 0; i < settings.shotsPerPose; i++) {
@@ -70,9 +114,10 @@ export async function POST(request: NextRequest) {
             pose,
             style: settings.modelStyle,
             seed: settings.seed ? settings.seed + i : undefined,
-            negativePrompt: settings.negativePrompt,
+            negativePrompt: negativePrompt || settings.negativePrompt,
             garmentImage, // 업로드한 의류 이미지 전달
             styleReferenceImages, // 스타일 참조 이미지들 전달
+            customPrompt: basePrompt, // 커스텀 프롬프트 전달
           });
 
           let resultImage = modelImage;
