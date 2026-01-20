@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { LoRAModel, LoRAStatus, UploadedImage } from '@/types';
+import { simpleTopCrop } from '@/lib/image-preprocess';
 
 interface LoRATrainingProps {
   onModelReady?: (model: LoRAModel) => void;
@@ -56,6 +57,11 @@ export default function LoRATraining({ onModelReady }: LoRATrainingProps) {
   const [error, setError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [available, setAvailable] = useState(false);
+
+  // 전처리 옵션
+  const [removeFaces, setRemoveFaces] = useState(true); // 기본값: 얼굴 제거 활성화
+  const [cropRatio, setCropRatio] = useState(0.3); // 상단 30% 크롭
+  const [isPreprocessing, setIsPreprocessing] = useState(false);
 
   // URL 스크래핑 관련 상태
   const [imageSourceTab, setImageSourceTab] = useState<ImageSourceTab>('upload');
@@ -284,21 +290,29 @@ export default function LoRATraining({ onModelReady }: LoRATrainingProps) {
     try {
       // 이미지 리사이즈 (업로드 크기 최적화 - 768px, JPEG 70%)
       setError(`이미지 ${trainingImages.length}장 최적화 중...`);
-      const resizedImages = await Promise.all(
+      let processedImages = await Promise.all(
         trainingImages.map((img) => resizeImageForTraining(img.preview, 768))
       );
+
+      // 얼굴 제거 전처리 (활성화된 경우)
+      if (removeFaces) {
+        setIsPreprocessing(true);
+        setError(`얼굴 제거 전처리 중... (상단 ${Math.round(cropRatio * 100)}% 크롭)`);
+        processedImages = await simpleTopCrop(processedImages, cropRatio);
+        setIsPreprocessing(false);
+      }
       setError(null);
 
       // payload 크기 계산 (디버그용)
       const payload = JSON.stringify({
         name: modelName,
         description: modelDescription,
-        images: resizedImages,
+        images: processedImages,
         triggerWord: triggerWord || undefined,
         trainingSteps,
       });
       const payloadSizeMB = (new Blob([payload]).size / 1024 / 1024).toFixed(2);
-      console.log(`Payload size: ${payloadSizeMB}MB (${resizedImages.length} images)`);
+      console.log(`Payload size: ${payloadSizeMB}MB (${processedImages.length} images)`);
 
       // Vercel 제한 체크 (4.5MB)
       if (parseFloat(payloadSizeMB) > 4) {
@@ -543,6 +557,53 @@ export default function LoRATraining({ onModelReady }: LoRATrainingProps) {
           </div>
         </div>
 
+        {/* 얼굴 제거 옵션 */}
+        <div className="p-3 rounded-lg" style={{ background: 'var(--background-tertiary)' }}>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-sm font-medium flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              얼굴 자동 제거
+            </label>
+            <button
+              onClick={() => setRemoveFaces(!removeFaces)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                removeFaces ? 'bg-[var(--accent)]' : 'bg-gray-600'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  removeFaces ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+          {removeFaces && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                <span>크롭 비율: 상단 {Math.round(cropRatio * 100)}% 제거</span>
+              </div>
+              <input
+                type="range"
+                min={0.15}
+                max={0.5}
+                step={0.05}
+                value={cropRatio}
+                onChange={(e) => setCropRatio(parseFloat(e.target.value))}
+                className="w-full"
+              />
+              <div className="flex justify-between text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                <span>15% (얼굴만)</span>
+                <span>50% (상반신)</span>
+              </div>
+              <p className="text-xs mt-1" style={{ color: 'var(--foreground-muted)' }}>
+                모델 착용샷에서 얼굴을 제거하여 옷 스타일만 학습합니다.
+              </p>
+            </div>
+          )}
+        </div>
+
         {/* 이미지 소스 선택 */}
         <div className="space-y-3">
           <label className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
@@ -741,7 +802,7 @@ export default function LoRATraining({ onModelReady }: LoRATrainingProps) {
                   <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
                   <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" className="opacity-75" />
                 </svg>
-                학습 시작 중...
+                {isPreprocessing ? '얼굴 제거 중...' : '학습 시작 중...'}
               </>
             ) : (
               <>
