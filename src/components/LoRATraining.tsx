@@ -8,6 +8,9 @@ interface LoRATrainingProps {
   onModelReady?: (model: LoRAModel) => void;
 }
 
+// 이미지 소스 타입
+type ImageSourceTab = 'upload' | 'url';
+
 export default function LoRATraining({ onModelReady }: LoRATrainingProps) {
   // State
   const [trainingImages, setTrainingImages] = useState<UploadedImage[]>([]);
@@ -21,6 +24,12 @@ export default function LoRATraining({ onModelReady }: LoRATrainingProps) {
   const [error, setError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [available, setAvailable] = useState(false);
+
+  // URL 스크래핑 관련 상태
+  const [imageSourceTab, setImageSourceTab] = useState<ImageSourceTab>('upload');
+  const [scrapeUrl, setScrapeUrl] = useState('');
+  const [isScraping, setIsScraping] = useState(false);
+  const [scrapeProgress, setScrapeProgress] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
@@ -114,6 +123,55 @@ export default function LoRATraining({ onModelReady }: LoRATrainingProps) {
 
   const handleRemoveImage = (id: string) => {
     setTrainingImages((prev) => prev.filter((img) => img.id !== id));
+  };
+
+  // URL에서 이미지 스크래핑
+  const handleScrapeImages = async () => {
+    if (!scrapeUrl.trim()) {
+      setError('URL을 입력해주세요.');
+      return;
+    }
+
+    setIsScraping(true);
+    setScrapeProgress('URL 분석 중...');
+    setError(null);
+
+    try {
+      const res = await fetch('/api/scrape-images', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: scrapeUrl,
+          maxImages: 50 - trainingImages.length,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.success && data.images) {
+        setScrapeProgress(`${data.images.length}장의 이미지를 찾았습니다. 처리 중...`);
+
+        // base64 이미지를 UploadedImage 형식으로 변환
+        const newImages: UploadedImage[] = data.images.map((base64: string) => ({
+          id: uuidv4(),
+          file: null as unknown as File,
+          preview: base64,
+          type: 'reference' as const,
+        }));
+
+        setTrainingImages((prev) => [...prev, ...newImages]);
+        setScrapeUrl('');
+        setScrapeProgress(null);
+      } else {
+        setError(data.error || '이미지를 추출할 수 없습니다.');
+      }
+    } catch (err) {
+      setError('URL에서 이미지를 가져오는 데 실패했습니다.');
+      console.error('Scrape error:', err);
+    } finally {
+      setIsScraping(false);
+      setScrapeProgress(null);
+    }
   };
 
   // 학습 시작
@@ -334,37 +392,138 @@ export default function LoRATraining({ onModelReady }: LoRATrainingProps) {
           </div>
         </div>
 
-        {/* 이미지 업로드 */}
-        <div className="space-y-2">
+        {/* 이미지 소스 선택 */}
+        <div className="space-y-3">
           <label className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
             학습 이미지 ({trainingImages.length}/50) - 최소 10장 필요
           </label>
 
-          <div
-            className={`upload-zone ${isDragOver ? 'drag-over' : ''}`}
-            onDrop={handleDrop}
-            onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
-            onDragLeave={(e) => { e.preventDefault(); setIsDragOver(false); }}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              onChange={(e) => e.target.files && processFiles(e.target.files)}
-            />
-            <div className="text-center">
-              <svg className="w-10 h-10 mx-auto mb-2" style={{ color: 'var(--foreground-muted)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          {/* 탭 선택 */}
+          <div className="flex rounded-lg p-1" style={{ background: 'var(--background-tertiary)' }}>
+            <button
+              onClick={() => setImageSourceTab('upload')}
+              className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                imageSourceTab === 'upload'
+                  ? 'bg-[var(--accent)] text-white'
+                  : 'hover:bg-[var(--background-secondary)]'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
-              <p className="text-sm font-medium">학습용 이미지 업로드</p>
-              <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
-                원하는 스타일의 사진 10-50장 (일괄 선택 가능)
-              </p>
-            </div>
+              직접 업로드
+            </button>
+            <button
+              onClick={() => setImageSourceTab('url')}
+              className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                imageSourceTab === 'url'
+                  ? 'bg-[var(--accent)] text-white'
+                  : 'hover:bg-[var(--background-secondary)]'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+              </svg>
+              URL에서 가져오기
+            </button>
           </div>
+
+          {/* 직접 업로드 탭 */}
+          {imageSourceTab === 'upload' && (
+            <div
+              className={`upload-zone ${isDragOver ? 'drag-over' : ''}`}
+              onDrop={handleDrop}
+              onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+              onDragLeave={(e) => { e.preventDefault(); setIsDragOver(false); }}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => e.target.files && processFiles(e.target.files)}
+              />
+              <div className="text-center">
+                <svg className="w-10 h-10 mx-auto mb-2" style={{ color: 'var(--foreground-muted)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <p className="text-sm font-medium">학습용 이미지 업로드</p>
+                <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                  원하는 스타일의 사진 10-50장 (일괄 선택 가능)
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* URL 입력 탭 */}
+          {imageSourceTab === 'url' && (
+            <div className="space-y-3">
+              <div className="p-4 rounded-lg" style={{ background: 'var(--background-tertiary)' }}>
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={scrapeUrl}
+                    onChange={(e) => setScrapeUrl(e.target.value)}
+                    placeholder="https://..."
+                    className="input flex-1"
+                    disabled={isScraping}
+                  />
+                  <button
+                    onClick={handleScrapeImages}
+                    disabled={isScraping || !scrapeUrl.trim()}
+                    className="btn-primary px-4 flex items-center gap-2"
+                  >
+                    {isScraping ? (
+                      <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
+                        <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" className="opacity-75" />
+                      </svg>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                    )}
+                    가져오기
+                  </button>
+                </div>
+
+                {scrapeProgress && (
+                  <p className="text-sm mt-2" style={{ color: 'var(--accent)' }}>
+                    {scrapeProgress}
+                  </p>
+                )}
+
+                <div className="mt-3 space-y-2">
+                  <p className="text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>
+                    지원하는 소스:
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { name: 'Google Drive', icon: '📁' },
+                      { name: '에이블리', icon: '👗' },
+                      { name: '지그재그', icon: '👚' },
+                      { name: '무신사', icon: '👔' },
+                      { name: 'W컨셉', icon: '👠' },
+                      { name: '기타 웹사이트', icon: '🌐' },
+                    ].map((source) => (
+                      <span
+                        key={source.name}
+                        className="text-xs px-2 py-1 rounded"
+                        style={{ background: 'var(--background-secondary)' }}
+                      >
+                        {source.icon} {source.name}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                    💡 상품 페이지, 브랜드 페이지, 또는 Google Drive 폴더 URL을 입력하세요.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* 업로드된 이미지 그리드 */}
           {trainingImages.length > 0 && (
