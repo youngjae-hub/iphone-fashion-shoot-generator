@@ -27,7 +27,7 @@ export default function LoRATraining({ onModelReady }: LoRATrainingProps) {
 
   // URL 스크래핑 관련 상태
   const [imageSourceTab, setImageSourceTab] = useState<ImageSourceTab>('upload');
-  const [scrapeUrl, setScrapeUrl] = useState('');
+  const [scrapeUrls, setScrapeUrls] = useState(''); // 여러 URL을 줄바꿈으로 구분
   const [isScraping, setIsScraping] = useState(false);
   const [scrapeProgress, setScrapeProgress] = useState<string | null>(null);
 
@@ -125,53 +125,80 @@ export default function LoRATraining({ onModelReady }: LoRATrainingProps) {
     setTrainingImages((prev) => prev.filter((img) => img.id !== id));
   };
 
-  // URL에서 이미지 스크래핑
+  // URL에서 이미지 스크래핑 (복수 URL 지원)
   const handleScrapeImages = async () => {
-    if (!scrapeUrl.trim()) {
+    const urls = scrapeUrls
+      .split('\n')
+      .map((url) => url.trim())
+      .filter((url) => url.length > 0);
+
+    if (urls.length === 0) {
       setError('URL을 입력해주세요.');
       return;
     }
 
     setIsScraping(true);
-    setScrapeProgress('URL 분석 중...');
     setError(null);
 
-    try {
-      const res = await fetch('/api/scrape-images', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url: scrapeUrl,
-          maxImages: 50 - trainingImages.length,
-        }),
-      });
+    let totalImages = 0;
+    let failedUrls: string[] = [];
 
-      const data = await res.json();
+    for (let i = 0; i < urls.length; i++) {
+      const url = urls[i];
+      const remainingSlots = 50 - trainingImages.length - totalImages;
 
-      if (data.success && data.images) {
-        setScrapeProgress(`${data.images.length}장의 이미지를 찾았습니다. 처리 중...`);
-
-        // base64 이미지를 UploadedImage 형식으로 변환
-        const newImages: UploadedImage[] = data.images.map((base64: string) => ({
-          id: uuidv4(),
-          file: null as unknown as File,
-          preview: base64,
-          type: 'reference' as const,
-        }));
-
-        setTrainingImages((prev) => [...prev, ...newImages]);
-        setScrapeUrl('');
-        setScrapeProgress(null);
-      } else {
-        setError(data.error || '이미지를 추출할 수 없습니다.');
+      if (remainingSlots <= 0) {
+        setScrapeProgress('최대 50장에 도달했습니다.');
+        break;
       }
-    } catch (err) {
-      setError('URL에서 이미지를 가져오는 데 실패했습니다.');
-      console.error('Scrape error:', err);
-    } finally {
-      setIsScraping(false);
-      setScrapeProgress(null);
+
+      setScrapeProgress(`URL ${i + 1}/${urls.length} 분석 중... (${url.slice(0, 50)}...)`);
+
+      try {
+        const res = await fetch('/api/scrape-images', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url,
+            maxImages: remainingSlots,
+          }),
+        });
+
+        const data = await res.json();
+
+        if (data.success && data.images && data.images.length > 0) {
+          // base64 이미지를 UploadedImage 형식으로 변환
+          const newImages: UploadedImage[] = data.images.map((base64: string) => ({
+            id: uuidv4(),
+            file: null as unknown as File,
+            preview: base64,
+            type: 'reference' as const,
+          }));
+
+          setTrainingImages((prev) => [...prev, ...newImages]);
+          totalImages += newImages.length;
+          setScrapeProgress(`URL ${i + 1}/${urls.length}: ${newImages.length}장 추가 (총 ${totalImages}장)`);
+        } else {
+          failedUrls.push(url);
+        }
+      } catch (err) {
+        console.error('Scrape error for URL:', url, err);
+        failedUrls.push(url);
+      }
     }
+
+    // 완료 메시지
+    if (totalImages > 0) {
+      setScrapeUrls('');
+      if (failedUrls.length > 0) {
+        setError(`${totalImages}장 추가됨. ${failedUrls.length}개 URL에서 이미지를 찾지 못했습니다.`);
+      }
+    } else {
+      setError('입력한 URL에서 이미지를 찾을 수 없습니다. 다른 URL을 시도해주세요.');
+    }
+
+    setIsScraping(false);
+    setScrapeProgress(null);
   };
 
   // 학습 시작
@@ -461,32 +488,36 @@ export default function LoRATraining({ onModelReady }: LoRATrainingProps) {
           {imageSourceTab === 'url' && (
             <div className="space-y-3">
               <div className="p-4 rounded-lg" style={{ background: 'var(--background-tertiary)' }}>
-                <div className="flex gap-2">
-                  <input
-                    type="url"
-                    value={scrapeUrl}
-                    onChange={(e) => setScrapeUrl(e.target.value)}
-                    placeholder="https://..."
-                    className="input flex-1"
+                <div className="flex flex-col gap-2">
+                  <textarea
+                    value={scrapeUrls}
+                    onChange={(e) => setScrapeUrls(e.target.value)}
+                    placeholder="URL을 한 줄에 하나씩 입력하세요&#10;https://example.com/product1&#10;https://example.com/product2&#10;https://example.com/product3"
+                    className="input w-full min-h-[100px] resize-y text-sm"
                     disabled={isScraping}
                   />
-                  <button
-                    onClick={handleScrapeImages}
-                    disabled={isScraping || !scrapeUrl.trim()}
-                    className="btn-primary px-4 flex items-center gap-2"
-                  >
-                    {isScraping ? (
-                      <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
-                        <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" className="opacity-75" />
-                      </svg>
-                    ) : (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                      </svg>
-                    )}
-                    가져오기
-                  </button>
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                      {scrapeUrls.split('\n').filter(url => url.trim()).length}개 URL 입력됨
+                    </span>
+                    <button
+                      onClick={handleScrapeImages}
+                      disabled={isScraping || !scrapeUrls.trim()}
+                      className="btn-primary px-4 py-2 flex items-center gap-2"
+                    >
+                      {isScraping ? (
+                        <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
+                          <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" className="opacity-75" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                      )}
+                      전체 가져오기
+                    </button>
+                  </div>
                 </div>
 
                 {scrapeProgress && (
