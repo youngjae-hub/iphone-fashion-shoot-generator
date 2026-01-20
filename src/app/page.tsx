@@ -16,6 +16,7 @@ import {
   GenerationSettings as GenerationSettingsType,
   LoRAModel,
   GenerationSession,
+  GarmentCategory,
   DEFAULT_PROVIDER_CONFIG,
   DEFAULT_GENERATION_SETTINGS,
 } from '@/types';
@@ -61,6 +62,13 @@ export default function Home() {
 
   const handleRemoveImage = useCallback((id: string) => {
     setUploadedImages((prev) => prev.filter((img) => img.id !== id));
+  }, []);
+
+  // 의류 카테고리 업데이트 핸들러
+  const handleCategoryUpdate = useCallback((id: string, category: GarmentCategory, confidence: number) => {
+    setUploadedImages(prev => prev.map(img =>
+      img.id === id ? { ...img, category, categoryConfidence: confidence } : img
+    ));
   }, []);
 
   const handleGenerate = async () => {
@@ -325,6 +333,8 @@ export default function Home() {
                 maxImages={5}
                 styleReferenceImages={styleReferenceImages}
                 onStyleReferenceUpload={setStyleReferenceImages}
+                autoClassify={true}
+                onCategoryUpdate={handleCategoryUpdate}
               />
             )}
 

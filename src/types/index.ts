@@ -36,6 +36,9 @@ export interface GenerationSettings {
   negativePrompt?: string;
 }
 
+// Garment Category Types
+export type GarmentCategory = 'top' | 'bottom' | 'dress' | 'outer' | 'accessory' | 'unknown';
+
 // Image Types
 export interface UploadedImage {
   id: string;
@@ -43,6 +46,8 @@ export interface UploadedImage {
   preview: string;
   type: 'garment' | 'background' | 'reference' | 'style-reference';
   processedUrl?: string;
+  category?: GarmentCategory; // AI가 판별한 의류 카테고리
+  categoryConfidence?: number; // 분류 신뢰도 (0-1)
 }
 
 export interface GeneratedImage {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
-import { UploadedImage } from '@/types';
+import { UploadedImage, GarmentCategory } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 
 interface ImageUploaderProps {
@@ -12,7 +12,19 @@ interface ImageUploaderProps {
   styleReferenceImages?: UploadedImage[];
   onStyleReferenceUpload?: (images: UploadedImage[]) => void;
   maxStyleReferenceImages?: number;
+  autoClassify?: boolean; // 자동 분류 활성화
+  onCategoryUpdate?: (id: string, category: GarmentCategory, confidence: number) => void;
 }
+
+// 카테고리 한글 라벨
+const CATEGORY_LABELS: Record<GarmentCategory, string> = {
+  top: '상의',
+  bottom: '하의',
+  dress: '원피스',
+  outer: '아우터',
+  accessory: '액세서리',
+  unknown: '미분류',
+};
 
 export default function ImageUploader({
   onUpload,
@@ -22,11 +34,38 @@ export default function ImageUploader({
   styleReferenceImages = [],
   onStyleReferenceUpload,
   maxStyleReferenceImages = 10,
+  autoClassify = true,
+  onCategoryUpdate,
 }: ImageUploaderProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [isStyleDragOver, setIsStyleDragOver] = useState(false);
+  const [classifyingIds, setClassifyingIds] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const styleInputRef = useRef<HTMLInputElement>(null);
+
+  // AI 분류 호출
+  const classifyGarment = async (imageId: string, imageBase64: string) => {
+    setClassifyingIds(prev => new Set(prev).add(imageId));
+    try {
+      const response = await fetch('/api/classify-garment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: imageBase64 }),
+      });
+      const data = await response.json();
+      if (data.success && onCategoryUpdate) {
+        onCategoryUpdate(imageId, data.category, data.confidence);
+      }
+    } catch (err) {
+      console.error('Classification error:', err);
+    } finally {
+      setClassifyingIds(prev => {
+        const next = new Set(prev);
+        next.delete(imageId);
+        return next;
+      });
+    }
+  };
 
   const processFiles = useCallback(
     async (files: FileList | File[], type: 'garment' | 'style-reference' = 'garment') => {
@@ -69,8 +108,9 @@ export default function ImageUploader({
             reader.readAsDataURL(file);
           });
 
+          const id = uuidv4();
           return {
-            id: uuidv4(),
+            id,
             file,
             preview,
             type: 'garment' as const,
@@ -79,8 +119,15 @@ export default function ImageUploader({
       );
 
       onUpload(newImages);
+
+      // 자동 분류 실행
+      if (autoClassify) {
+        for (const img of newImages) {
+          classifyGarment(img.id, img.preview);
+        }
+      }
     },
-    [maxImages, uploadedImages.length, onUpload, onStyleReferenceUpload, styleReferenceImages, maxStyleReferenceImages]
+    [maxImages, uploadedImages.length, onUpload, onStyleReferenceUpload, styleReferenceImages, maxStyleReferenceImages, autoClassify, classifyGarment]
   );
 
   const handleDrop = useCallback(
@@ -213,9 +260,29 @@ export default function ImageUploader({
                 </button>
               </div>
 
-              {/* Type badge */}
-              <div className="absolute top-2 left-2">
-                <span className="provider-badge">의류</span>
+              {/* Category badge */}
+              <div className="absolute top-2 left-2 flex gap-1">
+                {classifyingIds.has(image.id) ? (
+                  <span className="provider-badge flex items-center gap-1">
+                    <svg className="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
+                      <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" className="opacity-75" />
+                    </svg>
+                    분류중
+                  </span>
+                ) : image.category ? (
+                  <span className={`provider-badge ${
+                    image.category === 'top' ? 'bg-blue-500/20 text-blue-400' :
+                    image.category === 'bottom' ? 'bg-green-500/20 text-green-400' :
+                    image.category === 'dress' ? 'bg-pink-500/20 text-pink-400' :
+                    image.category === 'outer' ? 'bg-orange-500/20 text-orange-400' :
+                    ''
+                  }`}>
+                    {CATEGORY_LABELS[image.category]}
+                  </span>
+                ) : (
+                  <span className="provider-badge">의류</span>
+                )}
               </div>
             </div>
           ))}
