@@ -11,6 +11,38 @@ interface LoRATrainingProps {
 // 이미지 소스 타입
 type ImageSourceTab = 'upload' | 'url';
 
+// 이미지 리사이즈 함수 (학습용으로 최적화)
+async function resizeImageForTraining(base64: string, maxSize: number = 1024): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let { width, height } = img;
+
+      // 최대 크기 제한
+      if (width > maxSize || height > maxSize) {
+        if (width > height) {
+          height = (height / width) * maxSize;
+          width = maxSize;
+        } else {
+          width = (width / height) * maxSize;
+          height = maxSize;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx?.drawImage(img, 0, 0, width, height);
+
+      // JPEG로 압축 (품질 85%)
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => resolve(base64); // 실패 시 원본 반환
+    img.src = base64;
+  });
+}
+
 export default function LoRATraining({ onModelReady }: LoRATrainingProps) {
   // State
   const [trainingImages, setTrainingImages] = useState<UploadedImage[]>([]);
@@ -217,13 +249,20 @@ export default function LoRATraining({ onModelReady }: LoRATrainingProps) {
     setError(null);
 
     try {
+      // 이미지 리사이즈 (업로드 크기 최적화)
+      setError('이미지 최적화 중...');
+      const resizedImages = await Promise.all(
+        trainingImages.map((img) => resizeImageForTraining(img.preview, 1024))
+      );
+      setError(null);
+
       const res = await fetch('/api/lora', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: modelName,
           description: modelDescription,
-          images: trainingImages.map((img) => img.preview),
+          images: resizedImages,
           triggerWord: triggerWord || undefined,
           trainingSteps,
         }),
