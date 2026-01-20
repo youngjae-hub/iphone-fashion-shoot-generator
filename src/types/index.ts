@@ -231,3 +231,98 @@ export interface ProjectSettings {
   providers: ProviderConfig;
   loraModelId?: string;
 }
+
+// ============================================
+// Prompt Customization Types
+// ============================================
+
+export interface PromptTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  category: 'model' | 'background' | 'style' | 'custom';
+  basePrompt: string;
+  negativePrompt?: string;
+  isDefault?: boolean;
+}
+
+export interface CustomPromptSettings {
+  useCustomPrompt: boolean;
+  basePrompt: string;
+  styleModifiers: string[]; // 추가 스타일 수식어
+  negativePrompt: string;
+  templateId?: string; // 선택된 템플릿 ID
+}
+
+// 기본 프롬프트 템플릿들
+export const DEFAULT_PROMPT_TEMPLATES: PromptTemplate[] = [
+  {
+    id: 'iphone-natural',
+    name: '아이폰 자연광',
+    description: '자연스러운 아이폰 촬영 느낌',
+    category: 'style',
+    basePrompt: 'iPhone photo, natural lighting, soft shadows, authentic candid moment, slight grain, warm tones',
+    negativePrompt: 'studio lighting, flash, artificial, overly edited, HDR, oversaturated',
+    isDefault: true,
+  },
+  {
+    id: 'studio-clean',
+    name: '스튜디오 클린',
+    description: '깔끔한 스튜디오 촬영',
+    category: 'style',
+    basePrompt: 'professional studio photography, soft box lighting, clean white background, high-end fashion editorial',
+    negativePrompt: 'outdoor, natural lighting, grainy, amateur',
+  },
+  {
+    id: 'lifestyle-casual',
+    name: '라이프스타일 캐주얼',
+    description: '일상적인 캐주얼 느낌',
+    category: 'style',
+    basePrompt: 'lifestyle photography, casual setting, urban backdrop, relaxed atmosphere, street style',
+    negativePrompt: 'formal, studio, stiff pose',
+  },
+  {
+    id: 'korean-model',
+    name: '한국 모델',
+    description: '젊은 한국인 여성 모델',
+    category: 'model',
+    basePrompt: 'young Korean woman, slim figure, modern hairstyle, natural makeup, cropped above lips showing only body',
+    negativePrompt: 'full face visible, western features, heavy makeup, aged',
+  },
+  {
+    id: 'minimal-bg',
+    name: '미니멀 배경',
+    description: '심플한 단색 배경',
+    category: 'background',
+    basePrompt: 'minimal background, soft gradient, clean aesthetic, no distracting elements',
+    negativePrompt: 'busy background, cluttered, detailed scenery',
+  },
+  {
+    id: 'outdoor-natural',
+    name: '야외 자연',
+    description: '자연스러운 야외 배경',
+    category: 'background',
+    basePrompt: 'outdoor setting, natural environment, soft bokeh background, golden hour lighting',
+    negativePrompt: 'indoor, studio, artificial lighting',
+  },
+];
+
+// 스타일 수식어 옵션들
+export const STYLE_MODIFIERS = [
+  { id: 'warm-tone', label: '따뜻한 톤', prompt: 'warm color grading' },
+  { id: 'cool-tone', label: '차가운 톤', prompt: 'cool blue undertones' },
+  { id: 'high-contrast', label: '하이 콘트라스트', prompt: 'high contrast, dramatic shadows' },
+  { id: 'soft-light', label: '소프트 라이트', prompt: 'soft diffused lighting' },
+  { id: 'golden-hour', label: '골든아워', prompt: 'golden hour warm sunlight' },
+  { id: 'film-grain', label: '필름 그레인', prompt: 'subtle film grain texture' },
+  { id: 'vintage', label: '빈티지', prompt: 'vintage aesthetic, muted colors' },
+  { id: 'modern-clean', label: '모던 클린', prompt: 'modern clean aesthetic, sharp details' },
+];
+
+export const DEFAULT_CUSTOM_PROMPT_SETTINGS: CustomPromptSettings = {
+  useCustomPrompt: false,
+  basePrompt: '',
+  styleModifiers: [],
+  negativePrompt: 'blurry, low quality, distorted, ugly, deformed, bad anatomy, watermark, signature',
+  templateId: 'iphone-natural',
+};

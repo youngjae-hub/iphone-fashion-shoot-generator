@@ -8,6 +8,7 @@ import {
   ResultGallery,
   LoRATraining,
   History,
+  PromptEditor,
 } from '@/components';
 import {
   UploadedImage,
@@ -17,8 +18,10 @@ import {
   LoRAModel,
   GenerationSession,
   GarmentCategory,
+  CustomPromptSettings,
   DEFAULT_PROVIDER_CONFIG,
   DEFAULT_GENERATION_SETTINGS,
+  DEFAULT_CUSTOM_PROMPT_SETTINGS,
 } from '@/types';
 
 export default function Home() {
@@ -33,10 +36,11 @@ export default function Home() {
     imageGeneration: Record<string, boolean>;
     tryOn: Record<string, boolean>;
   } | undefined>();
-  const [activeTab, setActiveTab] = useState<'upload' | 'settings' | 'provider' | 'training' | 'history'>('upload');
+  const [activeTab, setActiveTab] = useState<'upload' | 'settings' | 'prompt' | 'provider' | 'training' | 'history'>('upload');
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [styleReferenceImages, setStyleReferenceImages] = useState<UploadedImage[]>([]);
   const [activeLoRA, setActiveLoRA] = useState<LoRAModel | null>(null);
+  const [promptSettings, setPromptSettings] = useState<CustomPromptSettings>(DEFAULT_CUSTOM_PROMPT_SETTINGS);
 
   // Provider 가용성 체크
   useEffect(() => {
@@ -302,18 +306,19 @@ export default function Home() {
         <aside className="w-full md:w-96 border-r flex-shrink-0 overflow-y-auto" style={{ borderColor: 'var(--border)', background: 'var(--background-secondary)' }}>
           <div className="p-4 space-y-6">
             {/* Tab Navigation */}
-            <div className="flex rounded-lg p-1" style={{ background: 'var(--background-tertiary)' }}>
+            <div className="flex flex-wrap rounded-lg p-1 gap-1" style={{ background: 'var(--background-tertiary)' }}>
               {[
                 { id: 'upload', label: '업로드' },
                 { id: 'settings', label: '설정' },
+                { id: 'prompt', label: '프롬프트' },
                 { id: 'provider', label: 'AI 모델' },
-                { id: 'training', label: '스타일 학습' },
+                { id: 'training', label: '학습' },
                 { id: 'history', label: '히스토리' },
               ].map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as typeof activeTab)}
-                  className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all ${
+                  className={`flex-1 py-2 px-2 rounded-md text-xs font-medium transition-all ${
                     activeTab === tab.id
                       ? 'bg-[var(--accent)] text-white'
                       : 'hover:bg-[var(--background-secondary)]'
@@ -342,6 +347,13 @@ export default function Home() {
               <GenerationSettings
                 settings={settings}
                 onChange={setSettings}
+              />
+            )}
+
+            {activeTab === 'prompt' && (
+              <PromptEditor
+                settings={promptSettings}
+                onChange={setPromptSettings}
               />
             )}
 
