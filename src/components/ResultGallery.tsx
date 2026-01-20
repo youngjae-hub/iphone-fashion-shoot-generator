@@ -9,6 +9,7 @@ interface ResultGalleryProps {
   onDownload: (image: GeneratedImage) => void;
   onDownloadAll: () => void;
   onRegenerate: (image: GeneratedImage) => void;
+  onUpscale?: (image: GeneratedImage, upscaledUrl: string) => void;
 }
 
 export default function ResultGallery({
@@ -17,10 +18,62 @@ export default function ResultGallery({
   onDownload,
   onDownloadAll,
   onRegenerate,
+  onUpscale,
 }: ResultGalleryProps) {
   const [selectedPose, setSelectedPose] = useState<PoseType | 'all'>('all');
   const [selectedImage, setSelectedImage] = useState<GeneratedImage | null>(null);
   const [isDownloadingZip, setIsDownloadingZip] = useState(false);
+  const [upscalingIds, setUpscalingIds] = useState<Set<string>>(new Set());
+  const [upscaleError, setUpscaleError] = useState<string | null>(null);
+
+  // 이미지 업스케일
+  const handleUpscale = async (image: GeneratedImage) => {
+    if (upscalingIds.has(image.id)) return;
+
+    setUpscalingIds(prev => new Set(prev).add(image.id));
+    setUpscaleError(null);
+
+    try {
+      const response = await fetch('/api/upscale', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image: image.url,
+          scale: 2,
+          model: 'real-esrgan',
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.upscaledImage) {
+        // 업스케일된 이미지 콜백 또는 직접 다운로드
+        if (onUpscale) {
+          onUpscale(image, data.upscaledImage);
+        } else {
+          // 직접 다운로드
+          const a = document.createElement('a');
+          a.href = data.upscaledImage;
+          a.download = `upscaled_${image.pose}_${image.id.slice(0, 8)}.png`;
+          a.target = '_blank';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        }
+      } else {
+        setUpscaleError(data.error || '업스케일 실패');
+      }
+    } catch (err) {
+      console.error('Upscale error:', err);
+      setUpscaleError('업스케일 중 오류가 발생했습니다.');
+    } finally {
+      setUpscalingIds(prev => {
+        const next = new Set(prev);
+        next.delete(image.id);
+        return next;
+      });
+    }
+  };
 
   // ZIP 다운로드
   const handleDownloadZip = async () => {
@@ -84,6 +137,21 @@ export default function ResultGallery({
             ({images.length}장)
           </span>
         </div>
+
+        {/* Upscale Error */}
+        {upscaleError && (
+          <div className="px-3 py-2 rounded-lg text-sm bg-red-500/20 text-red-400 flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            {upscaleError}
+            <button onClick={() => setUpscaleError(null)} className="ml-auto hover:text-red-300">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
 
         {images.length > 0 && (
           <div className="flex gap-2">
@@ -186,6 +254,7 @@ export default function ResultGallery({
                       onDownload(image);
                     }}
                     className="p-2 rounded-lg bg-white/10 hover:bg-white/20 backdrop-blur transition-colors"
+                    title="다운로드"
                   >
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -194,9 +263,30 @@ export default function ResultGallery({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
+                      handleUpscale(image);
+                    }}
+                    disabled={upscalingIds.has(image.id)}
+                    className="p-2 rounded-lg bg-white/10 hover:bg-white/20 backdrop-blur transition-colors disabled:opacity-50"
+                    title="업스케일 (2x)"
+                  >
+                    {upscalingIds.has(image.id) ? (
+                      <svg className="w-5 h-5 text-white animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
+                        <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" className="opacity-75" />
+                      </svg>
+                    ) : (
+                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                      </svg>
+                    )}
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
                       onRegenerate(image);
                     }}
                     className="p-2 rounded-lg bg-white/10 hover:bg-white/20 backdrop-blur transition-colors"
+                    title="재생성"
                   >
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -204,6 +294,15 @@ export default function ResultGallery({
                   </button>
                 </div>
               </div>
+
+              {/* Upscaling indicator */}
+              {upscalingIds.has(image.id) && (
+                <div className="absolute bottom-2 right-2">
+                  <span className="px-2 py-1 text-xs rounded bg-blue-500 text-white">
+                    업스케일 중...
+                  </span>
+                </div>
+              )}
 
               {/* Pose Badge */}
               <div className="absolute top-2 left-2">
@@ -250,6 +349,13 @@ export default function ResultGallery({
                     className="btn-primary"
                   >
                     다운로드
+                  </button>
+                  <button
+                    onClick={() => handleUpscale(selectedImage)}
+                    disabled={upscalingIds.has(selectedImage.id)}
+                    className="btn-secondary disabled:opacity-50"
+                  >
+                    {upscalingIds.has(selectedImage.id) ? '업스케일 중...' : '업스케일 2x'}
                   </button>
                   <button
                     onClick={() => {
