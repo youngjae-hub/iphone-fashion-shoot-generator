@@ -70,14 +70,39 @@ export class LoRATrainingService {
       model.status = 'training';
       loraModels.set(modelId, model);
 
-      // 2. Replicate 학습 시작
+      // 2. Replicate에 모델 생성 (destination용)
+      const modelSlug = request.name.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-');
+      const destination = `${process.env.REPLICATE_USERNAME}/${modelSlug}` as `${string}/${string}`;
+
+      // 모델이 없으면 생성
+      try {
+        await this.replicate.models.create(
+          process.env.REPLICATE_USERNAME!,
+          modelSlug,
+          {
+            visibility: 'private',
+            hardware: 'gpu-t4',
+            description: request.description || `LoRA model: ${request.name}`,
+          }
+        );
+        console.log('Created new model:', destination);
+      } catch (createError: unknown) {
+        // 이미 존재하면 무시 (409 Conflict 또는 already exists)
+        const errorMessage = createError instanceof Error ? createError.message : String(createError);
+        if (!errorMessage.includes('already exists') && !errorMessage.includes('409')) {
+          // 다른 에러면 로그만 출력하고 계속 진행 (모델이 이미 있을 수 있음)
+          console.log('Model creation note:', errorMessage);
+        }
+      }
+
+      // 3. Replicate 학습 시작
       // flux-dev-lora-trainer 모델 사용 (최신 버전)
       const training = await this.replicate.trainings.create(
         'ostris',
         'flux-dev-lora-trainer',
         '26dce37af90b9d997eeb970d92e47de3064d46c300504ae376c75bef6a9022d2',
         {
-          destination: `${process.env.REPLICATE_USERNAME || 'user'}/${request.name.toLowerCase().replace(/\s+/g, '-')}`,
+          destination,
           input: {
             input_images: zipUrl, // ZIP 파일 URL
             trigger_word: triggerWord,
@@ -103,7 +128,20 @@ export class LoRATrainingService {
       };
     } catch (error) {
       model.status = 'failed';
-      model.error = error instanceof Error ? error.message : 'Unknown error';
+
+      // 에러 메시지 파싱
+      let errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      // destination 관련 에러 처리
+      if (errorMessage.includes('destination does not exist')) {
+        errorMessage = `Replicate에 모델을 생성할 수 없습니다. replicate.com에서 '${process.env.REPLICATE_USERNAME}' 계정으로 로그인 후, 새 모델을 먼저 생성해주세요.`;
+      } else if (errorMessage.includes('permission') || errorMessage.includes('403')) {
+        errorMessage = 'Replicate 계정 권한이 없습니다. API 토큰과 사용자명을 확인해주세요.';
+      } else if (errorMessage.includes('500') || errorMessage.includes('Internal Server')) {
+        errorMessage = 'Replicate 서버에 일시적인 문제가 있습니다. 잠시 후 다시 시도해주세요.';
+      }
+
+      model.error = errorMessage;
       loraModels.set(modelId, model);
 
       return {
