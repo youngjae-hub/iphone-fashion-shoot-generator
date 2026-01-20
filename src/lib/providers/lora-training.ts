@@ -86,28 +86,22 @@ export class LoRATrainingService {
       const destination = `${process.env.REPLICATE_USERNAME}/${modelSlug}` as `${string}/${string}`;
       console.log('Model slug:', modelSlug, 'from name:', request.name);
 
-      // 모델이 없으면 생성 (visibility: public으로 변경 - private은 유료 플랜 필요)
+      // 모델 생성 시도 (실패해도 학습 시작 시도 - Replicate가 자동 생성할 수 있음)
       try {
         await this.replicate.models.create(
           process.env.REPLICATE_USERNAME!,
           modelSlug,
           {
             visibility: 'public',
-            hardware: 'gpu-a40-small', // 기본 GPU 하드웨어
+            hardware: 'gpu-a40-small',
             description: request.description || `LoRA model: ${request.name}`,
           }
         );
         console.log('Created new model:', destination);
       } catch (createError: unknown) {
-        // 이미 존재하거나 다른 에러면 무시하고 진행 시도
         const errorMessage = createError instanceof Error ? createError.message : String(createError);
-        console.log('Model creation note:', errorMessage);
-
-        // 권한 또는 인증 에러면 training 시작 시도 (모델이 이미 존재할 수 있음)
-        // 409 Conflict (already exists)는 정상이므로 계속 진행
-        if (errorMessage.includes('already exists') || errorMessage.includes('409')) {
-          console.log('Model already exists, continuing with training...');
-        }
+        console.log('Model creation skipped:', errorMessage);
+        // 모델 생성 실패해도 학습 시작 시도 (이미 존재하거나 학습 시 자동 생성될 수 있음)
       }
 
       // 3. Replicate 학습 시작
