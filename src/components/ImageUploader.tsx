@@ -1,0 +1,337 @@
+'use client';
+
+import { useState, useCallback, useRef } from 'react';
+import { UploadedImage } from '@/types';
+import { v4 as uuidv4 } from 'uuid';
+
+interface ImageUploaderProps {
+  onUpload: (images: UploadedImage[]) => void;
+  uploadedImages: UploadedImage[];
+  onRemove: (id: string) => void;
+  maxImages?: number;
+  styleReferenceImages?: UploadedImage[];
+  onStyleReferenceUpload?: (images: UploadedImage[]) => void;
+  maxStyleReferenceImages?: number;
+}
+
+export default function ImageUploader({
+  onUpload,
+  uploadedImages,
+  onRemove,
+  maxImages = 5,
+  styleReferenceImages = [],
+  onStyleReferenceUpload,
+  maxStyleReferenceImages = 10,
+}: ImageUploaderProps) {
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [isStyleDragOver, setIsStyleDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const styleInputRef = useRef<HTMLInputElement>(null);
+
+  const processFiles = useCallback(
+    async (files: FileList | File[], type: 'garment' | 'style-reference' = 'garment') => {
+      const fileArray = Array.from(files);
+
+      if (type === 'style-reference') {
+        // 스타일 참조 이미지 - 최대 maxStyleReferenceImages개까지
+        const remainingSlots = maxStyleReferenceImages - styleReferenceImages.length;
+        const filesToProcess = fileArray.slice(0, remainingSlots);
+
+        const newImages: UploadedImage[] = await Promise.all(
+          filesToProcess.map(async (file) => {
+            const preview = await new Promise<string>((resolve) => {
+              const reader = new FileReader();
+              reader.onload = (e) => resolve(e.target?.result as string);
+              reader.readAsDataURL(file);
+            });
+
+            return {
+              id: uuidv4(),
+              file,
+              preview,
+              type: 'style-reference' as const,
+            };
+          })
+        );
+
+        onStyleReferenceUpload?.([...styleReferenceImages, ...newImages]);
+        return;
+      }
+
+      const remainingSlots = maxImages - uploadedImages.length;
+      const filesToProcess = fileArray.slice(0, remainingSlots);
+
+      const newImages: UploadedImage[] = await Promise.all(
+        filesToProcess.map(async (file) => {
+          const preview = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target?.result as string);
+            reader.readAsDataURL(file);
+          });
+
+          return {
+            id: uuidv4(),
+            file,
+            preview,
+            type: 'garment' as const,
+          };
+        })
+      );
+
+      onUpload(newImages);
+    },
+    [maxImages, uploadedImages.length, onUpload, onStyleReferenceUpload, styleReferenceImages, maxStyleReferenceImages]
+  );
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragOver(false);
+      if (e.dataTransfer.files) {
+        processFiles(e.dataTransfer.files, 'garment');
+      }
+    },
+    [processFiles]
+  );
+
+  const handleStyleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsStyleDragOver(false);
+      if (e.dataTransfer.files) {
+        processFiles(e.dataTransfer.files, 'style-reference');
+      }
+    },
+    [processFiles]
+  );
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  }, []);
+
+  const handleClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleStyleClick = () => {
+    styleInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      processFiles(e.target.files, 'garment');
+    }
+  };
+
+  const handleStyleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      processFiles(e.target.files, 'style-reference');
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Garment Upload Zone */}
+      <div
+        className={`upload-zone ${isDragOver ? 'drag-over' : ''}`}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onClick={handleClick}
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={handleFileChange}
+        />
+
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: 'var(--accent-light)' }}>
+            <svg
+              className="w-8 h-8"
+              style={{ color: 'var(--accent)' }}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+              />
+            </svg>
+          </div>
+          <div>
+            <p className="font-medium">의류 이미지 업로드</p>
+            <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
+              드래그 앤 드롭 또는 클릭하여 선택
+            </p>
+          </div>
+          <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+            PNG, JPG, WEBP (최대 {maxImages}장)
+          </p>
+        </div>
+      </div>
+
+      {/* Uploaded Garment Images Grid */}
+      {uploadedImages.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          {uploadedImages.map((image) => (
+            <div
+              key={image.id}
+              className="relative group rounded-lg overflow-hidden"
+              style={{ aspectRatio: '3/4', background: 'var(--background-tertiary)' }}
+            >
+              <img
+                src={image.preview}
+                alt="Uploaded garment"
+                className="w-full h-full object-cover"
+              />
+
+              {/* Overlay */}
+              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemove(image.id);
+                  }}
+                  className="p-2 rounded-full bg-red-500 hover:bg-red-600 transition-colors"
+                >
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Type badge */}
+              <div className="absolute top-2 left-2">
+                <span className="provider-badge">의류</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Upload count */}
+      <div className="flex justify-between items-center text-sm" style={{ color: 'var(--foreground-muted)' }}>
+        <span>{uploadedImages.length} / {maxImages} 이미지 업로드됨</span>
+        {uploadedImages.length > 0 && (
+          <button
+            onClick={() => uploadedImages.forEach((img) => onRemove(img.id))}
+            className="text-red-400 hover:text-red-300 transition-colors"
+          >
+            전체 삭제
+          </button>
+        )}
+      </div>
+
+      {/* Style Reference Section */}
+      {onStyleReferenceUpload && (
+        <div className="pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
+          <div className="flex items-center gap-2 mb-3">
+            <svg className="w-4 h-4" style={{ color: 'var(--accent)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <span className="text-sm font-medium">스타일 참조 이미지 (선택)</span>
+            <span className="text-xs px-2 py-0.5 rounded" style={{ background: 'var(--accent-light)', color: 'var(--accent)' }}>
+              추천
+            </span>
+          </div>
+          <p className="text-xs mb-3" style={{ color: 'var(--foreground-muted)' }}>
+            원하는 촬영 스타일의 실제 사진을 업로드하면 더 자연스러운 결과를 얻을 수 있습니다. (최대 {maxStyleReferenceImages}장)
+          </p>
+
+          {/* Uploaded Style Reference Images Grid */}
+          {styleReferenceImages.length > 0 && (
+            <div className="grid grid-cols-4 gap-2 mb-3">
+              {styleReferenceImages.map((image) => (
+                <div
+                  key={image.id}
+                  className="relative group rounded-lg overflow-hidden"
+                  style={{ aspectRatio: '3/4', background: 'var(--background-tertiary)' }}
+                >
+                  <img
+                    src={image.preview}
+                    alt="Style reference"
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <button
+                      onClick={() => onStyleReferenceUpload(styleReferenceImages.filter((img) => img.id !== image.id))}
+                      className="p-1.5 rounded-full bg-red-500 hover:bg-red-600 transition-colors"
+                    >
+                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="absolute top-1 left-1">
+                    <span className="text-[10px] px-1 py-0.5 rounded" style={{ background: 'var(--success)', color: 'white' }}>
+                      참조
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Upload Zone for Style Reference */}
+          {styleReferenceImages.length < maxStyleReferenceImages && (
+            <div
+              className={`p-4 rounded-lg border-2 border-dashed cursor-pointer transition-all ${isStyleDragOver ? 'border-[var(--accent)] bg-[var(--accent-light)]' : 'border-[var(--border)] hover:border-[var(--accent)]'}`}
+              onDrop={handleStyleDrop}
+              onDragOver={(e) => { e.preventDefault(); setIsStyleDragOver(true); }}
+              onDragLeave={(e) => { e.preventDefault(); setIsStyleDragOver(false); }}
+              onClick={handleStyleClick}
+            >
+              <input
+                ref={styleInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={handleStyleFileChange}
+              />
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: 'var(--background-tertiary)' }}>
+                  <svg className="w-5 h-5" style={{ color: 'var(--foreground-muted)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-medium">참조 이미지 추가</p>
+                  <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                    지그재그, 에이블리 등 원하는 스타일의 사진 (일괄 선택 가능)
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Style Reference Count & Clear All */}
+          {styleReferenceImages.length > 0 && (
+            <div className="flex justify-between items-center text-xs mt-2" style={{ color: 'var(--foreground-muted)' }}>
+              <span>{styleReferenceImages.length} / {maxStyleReferenceImages} 참조 이미지</span>
+              <button
+                onClick={() => onStyleReferenceUpload([])}
+                className="text-red-400 hover:text-red-300 transition-colors"
+              >
+                전체 삭제
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
