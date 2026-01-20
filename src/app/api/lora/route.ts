@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   getLoRATrainingService,
   isLoRATrainingAvailable,
+  checkLoRATrainingRequirements,
 } from '@/lib/providers/lora-training';
 import { LoRATrainingRequest } from '@/types';
 
@@ -62,6 +63,15 @@ export async function GET(request: NextRequest) {
 // POST: 새 LoRA 학습 시작
 export async function POST(request: NextRequest) {
   try {
+    // 환경 변수 요구사항 확인
+    const requirements = checkLoRATrainingRequirements();
+    if (!requirements.valid) {
+      return NextResponse.json(
+        { success: false, error: requirements.error },
+        { status: 400 }
+      );
+    }
+
     const available = await isLoRATrainingAvailable();
     if (!available) {
       return NextResponse.json(
@@ -112,8 +122,23 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('LoRA POST error:', error);
+
+    // 구체적인 에러 메시지 제공
+    let errorMessage = '학습 시작에 실패했습니다.';
+    if (error instanceof Error) {
+      if (error.message.includes('REPLICATE_USERNAME') || error.message.includes('destination')) {
+        errorMessage = 'REPLICATE_USERNAME 환경 변수를 확인해주세요.';
+      } else if (error.message.includes('timeout') || error.message.includes('TIMEOUT')) {
+        errorMessage = '이미지 업로드 시간이 초과되었습니다. 이미지 수를 줄여주세요.';
+      } else if (error.message.includes('upload')) {
+        errorMessage = '이미지 업로드에 실패했습니다. 이미지 수를 줄이거나 다시 시도해주세요.';
+      } else {
+        errorMessage = `학습 오류: ${error.message}`;
+      }
+    }
+
     return NextResponse.json(
-      { success: false, error: '학습 시작에 실패했습니다.' },
+      { success: false, error: errorMessage },
       { status: 500 }
     );
   }
