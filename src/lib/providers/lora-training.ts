@@ -282,6 +282,8 @@ export class LoRATrainingService {
     // JSZip으로 이미지들을 ZIP 파일로 묶기
     const zip = new JSZip();
 
+    console.log(`Processing ${base64Images.length} images for ZIP...`);
+
     for (let i = 0; i < base64Images.length; i++) {
       try {
         const base64 = base64Images[i];
@@ -297,24 +299,48 @@ export class LoRATrainingService {
       }
     }
 
-    // ZIP 파일 생성
+    // ZIP 파일 생성 (압축 레벨 낮춤 - 속도 향상)
+    console.log('Generating ZIP file...');
     const zipBuffer = await zip.generateAsync({
       type: 'nodebuffer',
       compression: 'DEFLATE',
-      compressionOptions: { level: 6 },
+      compressionOptions: { level: 1 }, // 낮은 압축 레벨로 속도 향상
     });
 
     if (zipBuffer.length === 0) {
       throw new Error('Failed to create ZIP file');
     }
 
-    // Replicate files API로 ZIP 업로드
-    console.log(`Uploading ZIP file: ${zipBuffer.length} bytes, ${base64Images.length} images`);
+    console.log(`ZIP file created: ${zipBuffer.length} bytes, uploading...`);
 
+    // Replicate files API로 직접 업로드 (fetch 사용)
     try {
-      const file = await this.replicate.files.create(zipBuffer);
-      console.log('ZIP uploaded successfully:', file.urls.get);
-      return file.urls.get;
+      const formData = new FormData();
+      // Buffer를 Uint8Array로 변환하여 Blob 생성
+      const uint8Array = new Uint8Array(zipBuffer);
+      const blob = new Blob([uint8Array], { type: 'application/zip' });
+      formData.append('content', blob, 'training_images.zip');
+
+      const response = await fetch('https://api.replicate.com/v1/files', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Token ${process.env.REPLICATE_API_TOKEN}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('File upload failed:', response.status, errorText);
+        throw new Error(`Upload failed: ${response.status} ${errorText}`);
+      }
+
+      const fileData = await response.json();
+      console.log('ZIP uploaded successfully:', fileData.urls?.get || fileData.id);
+
+      // URL 반환 (urls.get 또는 직접 구성)
+      const fileUrl = fileData.urls?.get || `https://api.replicate.com/v1/files/${fileData.id}`;
+      return fileUrl;
     } catch (uploadError) {
       console.error('File upload error:', uploadError);
       throw new Error(`이미지 업로드 실패: ${uploadError instanceof Error ? uploadError.message : 'Unknown error'}`);
