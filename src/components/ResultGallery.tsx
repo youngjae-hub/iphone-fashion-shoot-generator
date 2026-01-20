@@ -20,6 +20,46 @@ export default function ResultGallery({
 }: ResultGalleryProps) {
   const [selectedPose, setSelectedPose] = useState<PoseType | 'all'>('all');
   const [selectedImage, setSelectedImage] = useState<GeneratedImage | null>(null);
+  const [isDownloadingZip, setIsDownloadingZip] = useState(false);
+
+  // ZIP 다운로드
+  const handleDownloadZip = async () => {
+    if (images.length === 0) return;
+
+    setIsDownloadingZip(true);
+    try {
+      const response = await fetch('/api/download-zip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          images: images.map((img, index) => ({
+            url: img.url,
+            filename: `fashion_${img.pose}_${index + 1}.png`,
+          })),
+          zipFilename: `fashion_lookbook_${Date.now()}.zip`,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('ZIP 생성 실패');
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `fashion_lookbook_${Date.now()}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('ZIP download error:', err);
+      alert('ZIP 다운로드에 실패했습니다.');
+    } finally {
+      setIsDownloadingZip(false);
+    }
+  };
 
   const filteredImages = selectedPose === 'all'
     ? images
@@ -46,12 +86,36 @@ export default function ResultGallery({
         </div>
 
         {images.length > 0 && (
-          <button onClick={onDownloadAll} className="btn-secondary flex items-center gap-2">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-            전체 다운로드
-          </button>
+          <div className="flex gap-2">
+            <button onClick={onDownloadAll} className="btn-secondary flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              개별 다운로드
+            </button>
+            <button
+              onClick={handleDownloadZip}
+              disabled={isDownloadingZip}
+              className="btn-primary flex items-center gap-2"
+            >
+              {isDownloadingZip ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
+                    <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" className="opacity-75" />
+                  </svg>
+                  ZIP 생성중...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                  </svg>
+                  ZIP 다운로드
+                </>
+              )}
+            </button>
+          </div>
         )}
       </div>
 
