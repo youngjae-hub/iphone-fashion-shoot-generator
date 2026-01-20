@@ -188,3 +188,41 @@ export interface LoRAGenerationRequest {
 export interface ExtendedProviderConfig extends ProviderConfig {
   activeLoRA?: string; // 현재 사용 중인 LoRA 모델 ID
 }
+
+// ============================================
+// History & Project Types
+// ============================================
+
+export interface GenerationSession {
+  id: string;
+  name?: string; // 사용자가 지정한 세션 이름
+  createdAt: number;
+  updatedAt: number;
+  garmentImages: string[]; // 원본 의류 이미지 URLs
+  generatedImages: GeneratedImage[];
+  settings: GenerationSettings;
+  providers: ProviderConfig;
+  loraModelId?: string; // 사용된 LoRA 모델 ID
+  totalCost?: number; // 예상 비용
+}
+
+export interface HistoryItem {
+  id: string;
+  sessionId: string;
+  type: 'generation' | 'lora-training';
+  timestamp: number;
+  thumbnail?: string; // 첫 번째 생성 이미지
+  garmentCount: number;
+  imageCount: number;
+  status: 'completed' | 'failed' | 'in-progress';
+}
+
+export interface ProjectSettings {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt: number;
+  settings: GenerationSettings;
+  providers: ProviderConfig;
+  loraModelId?: string;
+}

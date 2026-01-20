@@ -7,6 +7,7 @@ import {
   GenerationSettings,
   ResultGallery,
   LoRATraining,
+  History,
 } from '@/components';
 import {
   UploadedImage,
@@ -14,6 +15,7 @@ import {
   ProviderConfig,
   GenerationSettings as GenerationSettingsType,
   LoRAModel,
+  GenerationSession,
   DEFAULT_PROVIDER_CONFIG,
   DEFAULT_GENERATION_SETTINGS,
 } from '@/types';
@@ -30,7 +32,8 @@ export default function Home() {
     imageGeneration: Record<string, boolean>;
     tryOn: Record<string, boolean>;
   } | undefined>();
-  const [activeTab, setActiveTab] = useState<'upload' | 'settings' | 'provider' | 'training'>('upload');
+  const [activeTab, setActiveTab] = useState<'upload' | 'settings' | 'provider' | 'training' | 'history'>('upload');
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [styleReferenceImages, setStyleReferenceImages] = useState<UploadedImage[]>([]);
   const [activeLoRA, setActiveLoRA] = useState<LoRAModel | null>(null);
 
@@ -103,6 +106,8 @@ export default function Home() {
 
         if (generatedImages.length > 0) {
           setGeneratedImages((prev) => [...generatedImages, ...prev]);
+          // 히스토리 저장
+          saveToHistory(generatedImages);
         } else {
           setError('LoRA 이미지 생성에 실패했습니다.');
         }
@@ -124,6 +129,8 @@ export default function Home() {
 
         if (data.success) {
           setGeneratedImages((prev) => [...data.images, ...prev]);
+          // 히스토리 저장
+          saveToHistory(data.images);
         } else {
           setError(data.error || '이미지 생성에 실패했습니다.');
         }
@@ -134,6 +141,62 @@ export default function Home() {
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  // 히스토리에 저장
+  const saveToHistory = async (images: GeneratedImage[]) => {
+    try {
+      if (!currentSessionId) {
+        // 새 세션 생성
+        const createRes = await fetch('/api/history', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'create',
+            garmentImages: uploadedImages.map(img => img.preview),
+            settings,
+            providers: providerConfig,
+            loraModelId: activeLoRA?.id,
+          }),
+        });
+        const createData = await createRes.json();
+        if (createData.success) {
+          setCurrentSessionId(createData.session.id);
+          // 이미지 추가
+          await fetch('/api/history', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'addImages',
+              sessionId: createData.session.id,
+              images,
+            }),
+          });
+        }
+      } else {
+        // 기존 세션에 이미지 추가
+        await fetch('/api/history', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'addImages',
+            sessionId: currentSessionId,
+            images,
+          }),
+        });
+      }
+    } catch (err) {
+      console.error('Failed to save to history:', err);
+    }
+  };
+
+  // 히스토리에서 세션 불러오기
+  const loadFromHistory = (session: GenerationSession) => {
+    setGeneratedImages(session.generatedImages);
+    setSettings(session.settings);
+    setProviderConfig(session.providers);
+    setCurrentSessionId(session.id);
+    setActiveTab('upload');
   };
 
   const handleDownload = async (image: GeneratedImage) => {
@@ -237,6 +300,7 @@ export default function Home() {
                 { id: 'settings', label: '설정' },
                 { id: 'provider', label: 'AI 모델' },
                 { id: 'training', label: '스타일 학습' },
+                { id: 'history', label: '히스토리' },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -287,6 +351,10 @@ export default function Home() {
                   alert(`"${model.name}" 스타일 학습이 완료되었습니다!`);
                 }}
               />
+            )}
+
+            {activeTab === 'history' && (
+              <History onLoadSession={loadFromHistory} />
             )}
 
             {/* Active LoRA Badge */}
