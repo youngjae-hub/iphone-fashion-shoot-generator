@@ -3,6 +3,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { getLoRATrainingService } from '@/lib/providers/lora-training';
 import { LoRAGenerationRequest, GeneratedImage, PoseType } from '@/types';
 
+// Vercel Serverless Function 설정
+export const maxDuration = 60;
+export const dynamic = 'force-dynamic';
+
 // POST: 학습된 LoRA로 이미지 생성
 export async function POST(request: NextRequest) {
   try {

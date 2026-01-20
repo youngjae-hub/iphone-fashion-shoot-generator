@@ -5,6 +5,10 @@ import {
 } from '@/lib/providers/lora-training';
 import { LoRATrainingRequest } from '@/types';
 
+// Vercel Serverless Function 설정
+export const maxDuration = 60;
+export const dynamic = 'force-dynamic';
+
 // GET: 모든 LoRA 모델 목록 또는 특정 모델 상태 확인
 export async function GET(request: NextRequest) {
   try {

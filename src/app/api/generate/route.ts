@@ -6,6 +6,11 @@ import {
 } from '@/lib/providers';
 import { GenerationRequest, GeneratedImage, PoseType } from '@/types';
 
+// Vercel Serverless Function 설정
+// Hobby 플랜: 최대 60초, Pro 플랜: 최대 300초
+export const maxDuration = 60;
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -18,18 +23,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const imageProvider = getImageGenerationProvider(providers.imageGeneration);
-    const tryOnProvider = getTryOnProvider(providers.tryOn);
+    // Provider 초기화 에러 캐치
+    let imageProvider, tryOnProvider;
+    try {
+      imageProvider = getImageGenerationProvider(providers.imageGeneration);
+      tryOnProvider = getTryOnProvider(providers.tryOn);
+    } catch (providerError) {
+      console.error('Provider initialization error:', providerError);
+      return NextResponse.json(
+        { success: false, error: 'AI 모델 초기화에 실패했습니다. 환경 변수를 확인해주세요.' },
+        { status: 500 }
+      );
+    }
 
     // 가용성 체크
-    const [imageAvailable, tryOnAvailable] = await Promise.all([
-      imageProvider.isAvailable(),
-      tryOnProvider.isAvailable(),
-    ]);
+    let imageAvailable = false;
+    let tryOnAvailable = false;
+
+    try {
+      [imageAvailable, tryOnAvailable] = await Promise.all([
+        imageProvider.isAvailable(),
+        tryOnProvider.isAvailable(),
+      ]);
+    } catch (availError) {
+      console.error('Availability check error:', availError);
+    }
 
     if (!imageAvailable) {
       return NextResponse.json(
-        { success: false, error: `${providers.imageGeneration} API 키가 설정되지 않았습니다.` },
+        {
+          success: false,
+          error: `${providers.imageGeneration} API 키가 설정되지 않았습니다. Vercel 환경 변수에 REPLICATE_API_TOKEN을 추가해주세요.`
+        },
         { status: 400 }
       );
     }
@@ -95,8 +120,26 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Generation error:', error);
+
+    // 에러 타입에 따른 구체적인 메시지
+    let errorMessage = '서버 오류가 발생했습니다.';
+
+    if (error instanceof Error) {
+      if (error.message.includes('REPLICATE_API_TOKEN')) {
+        errorMessage = 'Replicate API 토큰이 설정되지 않았습니다. Vercel 환경 변수를 확인해주세요.';
+      } else if (error.message.includes('timeout') || error.message.includes('TIMEOUT')) {
+        errorMessage = '이미지 생성 시간이 초과되었습니다. 포즈 개수를 줄이거나 다시 시도해주세요.';
+      } else if (error.message.includes('rate limit') || error.message.includes('429')) {
+        errorMessage = 'API 호출 한도에 도달했습니다. 잠시 후 다시 시도해주세요.';
+      } else if (error.message.includes('Invalid') || error.message.includes('401')) {
+        errorMessage = 'API 키가 유효하지 않습니다. Vercel 환경 변수를 확인해주세요.';
+      } else {
+        errorMessage = `오류: ${error.message}`;
+      }
+    }
+
     return NextResponse.json(
-      { success: false, error: '서버 오류가 발생했습니다.' },
+      { success: false, error: errorMessage },
       { status: 500 }
     );
   }

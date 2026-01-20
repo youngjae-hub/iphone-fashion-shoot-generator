@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Vercel Serverless Function 설정
+export const maxDuration = 60;
+export const dynamic = 'force-dynamic';
+
 // 지원하는 소스 타입
 type SourceType = 'google-drive' | 'ably' | 'zigzag' | 'musinsa' | 'wconcept' | 'generic';
 
