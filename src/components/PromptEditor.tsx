@@ -8,6 +8,7 @@ import {
   STYLE_MODIFIERS,
   DEFAULT_CUSTOM_PROMPT_SETTINGS,
 } from '@/types';
+import HelpTooltip from './HelpTooltip';
 
 interface PromptEditorProps {
   settings: CustomPromptSettings;
@@ -72,6 +73,11 @@ export default function PromptEditor({ settings, onChange }: PromptEditorProps) 
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
           </svg>
           프롬프트 설정
+          <HelpTooltip title="프롬프트란?">
+            <p className="mb-2">AI에게 어떤 이미지를 생성할지 알려주는 <strong>텍스트 명령어</strong>입니다.</p>
+            <p className="mb-2">프롬프트가 상세할수록 원하는 결과물에 가까운 이미지가 생성됩니다.</p>
+            <p className="text-[11px]">💡 템플릿을 선택하면 최적화된 프롬프트가 자동 적용됩니다.</p>
+          </HelpTooltip>
         </h3>
         <button
           onClick={() => onChange(DEFAULT_CUSTOM_PROMPT_SETTINGS)}
@@ -84,11 +90,21 @@ export default function PromptEditor({ settings, onChange }: PromptEditorProps) 
 
       {/* 커스텀 모드 토글 */}
       <div className="flex items-center justify-between p-3 rounded-lg" style={{ background: 'var(--background-tertiary)' }}>
-        <div>
-          <p className="text-sm font-medium">커스텀 프롬프트</p>
-          <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
-            직접 프롬프트를 작성합니다
-          </p>
+        <div className="flex items-center gap-2">
+          <div>
+            <p className="text-sm font-medium">커스텀 프롬프트</p>
+            <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+              직접 프롬프트를 작성합니다
+            </p>
+          </div>
+          <HelpTooltip title="커스텀 프롬프트란?">
+            <p className="mb-2">미리 제공된 템플릿 대신 <strong>직접 프롬프트를 작성</strong>하는 모드입니다.</p>
+            <ul className="list-disc list-inside space-y-1">
+              <li><strong>OFF:</strong> 템플릿에서 선택 (초보자 추천)</li>
+              <li><strong>ON:</strong> 영어로 직접 작성 (고급 사용자)</li>
+            </ul>
+            <p className="mt-2 text-[11px]">💡 처음 사용하신다면 템플릿 모드를 권장합니다!</p>
+          </HelpTooltip>
         </div>
         <button
           onClick={handleToggleCustomMode}
@@ -145,7 +161,7 @@ export default function PromptEditor({ settings, onChange }: PromptEditorProps) 
                 <div className="flex items-start justify-between">
                   <span className="text-sm font-medium">{template.name}</span>
                   {template.isDefault && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'var(--accent)', color: 'white' }}>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'var(--accent)', color: 'var(--background)' }}>
                       기본
                     </span>
                   )}
@@ -171,8 +187,16 @@ export default function PromptEditor({ settings, onChange }: PromptEditorProps) 
       {settings.useCustomPrompt && (
         <div className="space-y-3">
           <div>
-            <label className="text-xs font-medium mb-1.5 block" style={{ color: 'var(--foreground-muted)' }}>
+            <label className="text-xs font-medium mb-1.5 flex items-center gap-2" style={{ color: 'var(--foreground-muted)' }}>
               메인 프롬프트
+              <HelpTooltip title="메인 프롬프트 작성법">
+                <p className="mb-2">AI가 생성할 이미지를 설명하는 <strong>영어 텍스트</strong>입니다.</p>
+                <p className="mb-2">좋은 프롬프트 예시:</p>
+                <p className="text-[11px] p-2 rounded" style={{ background: 'var(--background-tertiary)' }}>
+                  &quot;young Korean woman wearing the uploaded clothing, iPhone photo style, natural lighting, casual pose, cream wall background&quot;
+                </p>
+                <p className="mt-2 text-[11px]">💡 구체적으로 작성할수록 원하는 결과를 얻기 쉽습니다.</p>
+              </HelpTooltip>
             </label>
             <textarea
               value={settings.basePrompt}
@@ -191,8 +215,17 @@ export default function PromptEditor({ settings, onChange }: PromptEditorProps) 
 
       {/* 스타일 수식어 */}
       <div>
-        <label className="text-xs font-medium mb-2 block" style={{ color: 'var(--foreground-muted)' }}>
+        <label className="text-xs font-medium mb-2 flex items-center gap-2" style={{ color: 'var(--foreground-muted)' }}>
           스타일 수식어 (선택)
+          <HelpTooltip title="스타일 수식어란?">
+            <p className="mb-2">기본 프롬프트에 <strong>추가적인 스타일</strong>을 더해주는 옵션입니다.</p>
+            <ul className="list-disc list-inside space-y-1">
+              <li><strong>고화질:</strong> 더 선명한 이미지</li>
+              <li><strong>소프트 라이팅:</strong> 부드러운 조명 효과</li>
+              <li><strong>에디토리얼:</strong> 잡지 화보 느낌</li>
+            </ul>
+            <p className="mt-2 text-[11px]">💡 여러 개를 동시에 선택할 수 있습니다.</p>
+          </HelpTooltip>
         </label>
         <div className="flex flex-wrap gap-2">
           {STYLE_MODIFIERS.map((modifier) => (
@@ -236,8 +269,18 @@ export default function PromptEditor({ settings, onChange }: PromptEditorProps) 
         {showAdvanced && (
           <div className="mt-3 space-y-3">
             <div>
-              <label className="text-xs font-medium mb-1.5 block" style={{ color: 'var(--foreground-muted)' }}>
+              <label className="text-xs font-medium mb-1.5 flex items-center gap-2" style={{ color: 'var(--foreground-muted)' }}>
                 네거티브 프롬프트
+                <HelpTooltip title="네거티브 프롬프트란?">
+                  <p className="mb-2">생성 결과에서 <strong>제외</strong>하고 싶은 요소들을 입력합니다.</p>
+                  <p className="mb-2">예시:</p>
+                  <ul className="list-disc list-inside space-y-1 text-[11px]">
+                    <li>blurry, low quality (흐릿한 이미지 방지)</li>
+                    <li>distorted hands (손 왜곡 방지)</li>
+                    <li>bad anatomy (신체 비율 오류 방지)</li>
+                  </ul>
+                  <p className="mt-2 text-[11px]">💡 기본값을 그대로 사용하셔도 충분합니다.</p>
+                </HelpTooltip>
               </label>
               <textarea
                 value={settings.negativePrompt}
@@ -258,8 +301,12 @@ export default function PromptEditor({ settings, onChange }: PromptEditorProps) 
       {/* 프롬프트 미리보기 */}
       <div className="p-3 rounded-lg" style={{ background: 'var(--background-tertiary)' }}>
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>
+          <span className="text-xs font-medium flex items-center gap-2" style={{ color: 'var(--foreground-muted)' }}>
             최종 프롬프트 미리보기
+            <HelpTooltip title="최종 프롬프트란?">
+              <p className="mb-2">선택한 템플릿과 스타일 수식어가 합쳐져서 <strong>AI에게 실제로 전달되는 프롬프트</strong>입니다.</p>
+              <p className="text-[11px]">💡 복사 버튼으로 프롬프트를 복사할 수 있습니다.</p>
+            </HelpTooltip>
           </span>
           <button
             onClick={() => navigator.clipboard.writeText(generatePreview())}

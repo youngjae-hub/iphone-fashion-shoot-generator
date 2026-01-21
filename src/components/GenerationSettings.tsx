@@ -2,6 +2,7 @@
 
 import type { GenerationSettings as GenerationSettingsType, PoseType } from '@/types';
 import { POSE_CONFIGS } from '@/types';
+import HelpTooltip from './HelpTooltip';
 
 interface GenerationSettingsProps {
   settings: GenerationSettingsType;
@@ -61,7 +62,17 @@ export default function GenerationSettings({
 
       {/* Model Style */}
       <div className="settings-group">
-        <label className="settings-label">모델 스타일</label>
+        <label className="settings-label flex items-center gap-2">
+          모델 스타일
+          <HelpTooltip title="모델 스타일이란?">
+            <p className="mb-2">생성될 모델(사람)의 전체적인 촬영 분위기를 결정합니다.</p>
+            <ul className="list-disc list-inside space-y-1">
+              <li><strong>아이폰 내추럴:</strong> 실제 아이폰으로 찍은 듯한 자연스러운 느낌</li>
+              <li><strong>스튜디오:</strong> 전문 스튜디오에서 조명을 세팅한 느낌</li>
+              <li><strong>캐주얼:</strong> 일상에서 편하게 찍은 스냅 느낌</li>
+            </ul>
+          </HelpTooltip>
+        </label>
         <select
           value={settings.modelStyle}
           onChange={(e) => onChange({ ...settings, modelStyle: e.target.value as GenerationSettingsType['modelStyle'] })}
@@ -77,7 +88,19 @@ export default function GenerationSettings({
 
       {/* Background Style */}
       <div className="settings-group">
-        <label className="settings-label">배경 스타일</label>
+        <label className="settings-label flex items-center gap-2">
+          배경 스타일
+          <HelpTooltip title="배경 스타일이란?">
+            <p className="mb-2">이미지의 배경 장소와 분위기를 결정합니다.</p>
+            <ul className="list-disc list-inside space-y-1">
+              <li><strong>방 코너:</strong> 자연광이 들어오는 집 안</li>
+              <li><strong>크림색 벽:</strong> 깔끔한 무지 배경</li>
+              <li><strong>카페:</strong> 아늑한 분위기의 카페</li>
+              <li><strong>거울샷:</strong> 전신거울 앞 셀피 스타일</li>
+              <li><strong>아웃도어:</strong> 야외 거리 촬영 느낌</li>
+            </ul>
+          </HelpTooltip>
+        </label>
         <select
           value={settings.backgroundStyle}
           onChange={(e) => onChange({ ...settings, backgroundStyle: e.target.value })}
@@ -93,7 +116,20 @@ export default function GenerationSettings({
 
       {/* Pose Selection */}
       <div className="settings-group">
-        <label className="settings-label">포즈 선택</label>
+        <label className="settings-label flex items-center gap-2">
+          포즈 선택
+          <HelpTooltip title="포즈 선택이란?">
+            <p className="mb-2">생성할 이미지의 모델 포즈를 선택합니다. 여러 개를 선택할 수 있습니다.</p>
+            <ul className="list-disc list-inside space-y-1">
+              <li><strong>정면:</strong> 앞에서 바라본 기본 포즈</li>
+              <li><strong>측면:</strong> 옆에서 바라본 프로필 샷</li>
+              <li><strong>뒷면:</strong> 뒤에서 바라본 백샷</li>
+              <li><strong>연출:</strong> 자연스러운 움직임이 있는 포즈</li>
+              <li><strong>디테일:</strong> 의류 디테일을 강조한 클로즈업</li>
+            </ul>
+            <p className="mt-2 text-[11px]">💡 다양한 포즈를 선택하면 룩북의 완성도가 높아집니다!</p>
+          </HelpTooltip>
+        </label>
         <div className="flex flex-wrap gap-2">
           {POSE_CONFIGS.map((pose) => (
             <button
@@ -112,8 +148,17 @@ export default function GenerationSettings({
 
       {/* Shots per Pose */}
       <div className="settings-group">
-        <label className="settings-label">
+        <label className="settings-label flex items-center gap-2">
           포즈당 컷 수: <span className="font-bold" style={{ color: 'var(--accent)' }}>{settings.shotsPerPose}</span>
+          <HelpTooltip title="포즈당 컷 수란?">
+            <p className="mb-2">각 포즈별로 생성할 이미지 개수입니다.</p>
+            <ul className="list-disc list-inside space-y-1">
+              <li><strong>1~2컷:</strong> 빠른 테스트용</li>
+              <li><strong>3~5컷:</strong> 기본 룩북 제작용</li>
+              <li><strong>6~10컷:</strong> 다양한 선택지가 필요할 때</li>
+            </ul>
+            <p className="mt-2 text-[11px]">💡 컷 수가 많을수록 생성 시간이 길어지고 비용이 증가합니다.</p>
+          </HelpTooltip>
         </label>
         <input
           type="range"
@@ -147,13 +192,14 @@ export default function GenerationSettings({
       <div className="settings-group">
         <label className="settings-label flex items-center gap-2">
           시드 값 (선택사항)
-          <span
-            className="inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] cursor-help"
-            style={{ background: 'var(--background-tertiary)', color: 'var(--foreground-muted)' }}
-            title="시드(Seed)는 AI 이미지 생성의 시작점을 결정하는 숫자입니다"
-          >
-            ?
-          </span>
+          <HelpTooltip title="시드(Seed)란?">
+            <p className="mb-2">AI가 이미지를 생성할 때 사용하는 난수의 시작점입니다.</p>
+            <ul className="list-disc list-inside space-y-1">
+              <li><strong>비워두면:</strong> 매번 완전히 다른 이미지 생성</li>
+              <li><strong>같은 숫자 입력:</strong> 비슷한 구도/스타일의 이미지 재현 가능</li>
+            </ul>
+            <p className="mt-2 text-[11px]">💡 마음에 드는 결과가 나오면 해당 시드 값을 메모해두세요!</p>
+          </HelpTooltip>
         </label>
         <input
           type="number"
@@ -162,18 +208,6 @@ export default function GenerationSettings({
           onChange={(e) => onChange({ ...settings, seed: e.target.value ? parseInt(e.target.value) : undefined })}
           className="input"
         />
-        <div className="mt-2 p-2.5 rounded-md text-xs space-y-1.5" style={{ background: 'var(--background-tertiary)' }}>
-          <p style={{ color: 'var(--foreground-muted)' }}>
-            <strong style={{ color: 'var(--foreground)' }}>시드(Seed)란?</strong> AI가 이미지를 생성할 때 사용하는 난수의 시작점입니다.
-          </p>
-          <ul className="list-disc list-inside space-y-1" style={{ color: 'var(--foreground-muted)' }}>
-            <li><strong>비워두면:</strong> 매번 완전히 다른 이미지 생성</li>
-            <li><strong>같은 숫자 입력:</strong> 비슷한 구도/스타일의 이미지 재현 가능</li>
-          </ul>
-          <p style={{ color: 'var(--foreground-muted)' }}>
-            💡 마음에 드는 결과가 나오면 해당 시드 값을 메모해두세요!
-          </p>
-        </div>
       </div>
 
       {/* Negative Prompt (Advanced) */}
@@ -186,7 +220,19 @@ export default function GenerationSettings({
         </summary>
         <div className="mt-4 space-y-4">
           <div className="settings-group">
-            <label className="settings-label">네거티브 프롬프트</label>
+            <label className="settings-label flex items-center gap-2">
+              네거티브 프롬프트
+              <HelpTooltip title="네거티브 프롬프트란?">
+                <p className="mb-2">생성 결과에서 <strong>제외</strong>하고 싶은 요소들을 입력합니다.</p>
+                <p className="mb-2">예시:</p>
+                <ul className="list-disc list-inside space-y-1 text-[11px]">
+                  <li>blurry, low quality (흐릿한 이미지 방지)</li>
+                  <li>distorted hands (손 왜곡 방지)</li>
+                  <li>bad anatomy (신체 비율 오류 방지)</li>
+                </ul>
+                <p className="mt-2 text-[11px]">💡 기본값을 그대로 사용하셔도 충분합니다.</p>
+              </HelpTooltip>
+            </label>
             <textarea
               placeholder="생성에서 제외할 요소들..."
               value={settings.negativePrompt || ''}

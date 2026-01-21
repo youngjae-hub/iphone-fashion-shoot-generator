@@ -1,6 +1,7 @@
 'use client';
 
 import { ProviderConfig, ImageGenerationProvider, TryOnProvider } from '@/types';
+import HelpTooltip from './HelpTooltip';
 
 interface ProviderSelectorProps {
   config: ProviderConfig;
@@ -51,7 +52,20 @@ export default function ProviderSelector({
 
       {/* Image Generation Provider */}
       <div className="settings-group">
-        <label className="settings-label">이미지 생성 모델</label>
+        <label className="settings-label flex items-center gap-2">
+          이미지 생성 모델
+          <HelpTooltip title="이미지 생성 모델이란?">
+            <p className="mb-2">AI 이미지를 만들어주는 <strong>핵심 엔진</strong>입니다. 각 모델마다 특징이 다릅니다.</p>
+            <ul className="list-disc list-inside space-y-1">
+              <li><strong>Nano Banana Pro:</strong> 가장 고품질, 권장</li>
+              <li><strong>Google Imagen:</strong> 안정적인 품질</li>
+              <li><strong>Flux Pro:</strong> 빠른 속도, 괜찮은 품질</li>
+              <li><strong>Stable Diffusion:</strong> 다양한 스타일</li>
+              <li><strong>DALL-E 3:</strong> OpenAI의 이미지 생성</li>
+            </ul>
+            <p className="mt-2 text-[11px]">💡 결과가 마음에 안 들면 다른 모델로 재시도해보세요!</p>
+          </HelpTooltip>
+        </label>
         <div className="space-y-2">
           {IMAGE_GENERATION_OPTIONS.map((option) => {
             const available = isAvailable('imageGeneration', option.value);
@@ -99,7 +113,18 @@ export default function ProviderSelector({
 
       {/* Try-On Provider */}
       <div className="settings-group">
-        <label className="settings-label">Virtual Try-On 모델</label>
+        <label className="settings-label flex items-center gap-2">
+          Virtual Try-On 모델
+          <HelpTooltip title="Virtual Try-On이란?">
+            <p className="mb-2">업로드한 옷을 모델이 <strong>실제로 입은 것처럼</strong> 합성해주는 기술입니다.</p>
+            <ul className="list-disc list-inside space-y-1">
+              <li><strong>IDM-VTON:</strong> 가장 자연스러운 합성 (권장)</li>
+              <li><strong>Kolors VTON:</strong> 빠른 속도</li>
+              <li><strong>FASHN AI:</strong> 패션 특화 합성</li>
+            </ul>
+            <p className="mt-2 text-[11px]">💡 옷의 디테일과 핏을 자연스럽게 표현합니다.</p>
+          </HelpTooltip>
+        </label>
         <div className="space-y-2">
           {TRYON_OPTIONS.map((option) => {
             const available = isAvailable('tryOn', option.value);
