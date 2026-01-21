@@ -145,17 +145,35 @@ export default function GenerationSettings({
 
       {/* Seed (Optional) */}
       <div className="settings-group">
-        <label className="settings-label">시드 값 (선택사항)</label>
+        <label className="settings-label flex items-center gap-2">
+          시드 값 (선택사항)
+          <span
+            className="inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] cursor-help"
+            style={{ background: 'var(--background-tertiary)', color: 'var(--foreground-muted)' }}
+            title="시드(Seed)는 AI 이미지 생성의 시작점을 결정하는 숫자입니다"
+          >
+            ?
+          </span>
+        </label>
         <input
           type="number"
-          placeholder="랜덤 생성 (비워두면 매번 다른 결과)"
+          placeholder="비워두면 매번 다른 결과"
           value={settings.seed || ''}
           onChange={(e) => onChange({ ...settings, seed: e.target.value ? parseInt(e.target.value) : undefined })}
           className="input"
         />
-        <p className="text-xs mt-1" style={{ color: 'var(--foreground-muted)' }}>
-          동일한 시드 값을 사용하면 비슷한 결과를 재현할 수 있습니다.
-        </p>
+        <div className="mt-2 p-2.5 rounded-md text-xs space-y-1.5" style={{ background: 'var(--background-tertiary)' }}>
+          <p style={{ color: 'var(--foreground-muted)' }}>
+            <strong style={{ color: 'var(--foreground)' }}>시드(Seed)란?</strong> AI가 이미지를 생성할 때 사용하는 난수의 시작점입니다.
+          </p>
+          <ul className="list-disc list-inside space-y-1" style={{ color: 'var(--foreground-muted)' }}>
+            <li><strong>비워두면:</strong> 매번 완전히 다른 이미지 생성</li>
+            <li><strong>같은 숫자 입력:</strong> 비슷한 구도/스타일의 이미지 재현 가능</li>
+          </ul>
+          <p style={{ color: 'var(--foreground-muted)' }}>
+            💡 마음에 드는 결과가 나오면 해당 시드 값을 메모해두세요!
+          </p>
+        </div>
       </div>
 
       {/* Negative Prompt (Advanced) */}
