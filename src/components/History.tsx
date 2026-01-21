@@ -183,7 +183,7 @@ export default function History({ onLoadSession }: HistoryProps) {
                     e.stopPropagation();
                     onLoadSession(session);
                   }}
-                  className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-white hover:opacity-90"
+                  className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-[var(--background)] hover:opacity-90"
                 >
                   불러오기
                 </button>

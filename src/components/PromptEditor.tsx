@@ -120,7 +120,7 @@ export default function PromptEditor({ settings, onChange }: PromptEditorProps) 
                 onClick={() => setActiveCategory(cat.id as typeof activeCategory)}
                 className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
                   activeCategory === cat.id
-                    ? 'bg-[var(--accent)] text-white'
+                    ? 'bg-[var(--accent)] text-[var(--background)]'
                     : 'hover:bg-[var(--background-tertiary)]'
                 }`}
               >
@@ -201,7 +201,7 @@ export default function PromptEditor({ settings, onChange }: PromptEditorProps) 
               onClick={() => handleToggleModifier(modifier.id)}
               className={`px-3 py-1.5 text-xs rounded-full transition-all ${
                 settings.styleModifiers.includes(modifier.id)
-                  ? 'bg-[var(--accent)] text-white'
+                  ? 'bg-[var(--accent)] text-[var(--background)]'
                   : 'hover:bg-[var(--background-tertiary)]'
               }`}
               style={{

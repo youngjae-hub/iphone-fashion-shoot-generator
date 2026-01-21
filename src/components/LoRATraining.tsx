@@ -616,7 +616,7 @@ export default function LoRATraining({ onModelReady }: LoRATrainingProps) {
               onClick={() => setImageSourceTab('upload')}
               className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 ${
                 imageSourceTab === 'upload'
-                  ? 'bg-[var(--accent)] text-white'
+                  ? 'bg-[var(--accent)] text-[var(--background)]'
                   : 'hover:bg-[var(--background-secondary)]'
               }`}
             >
@@ -629,7 +629,7 @@ export default function LoRATraining({ onModelReady }: LoRATrainingProps) {
               onClick={() => setImageSourceTab('url')}
               className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 ${
                 imageSourceTab === 'url'
-                  ? 'bg-[var(--accent)] text-white'
+                  ? 'bg-[var(--accent)] text-[var(--background)]'
                   : 'hover:bg-[var(--background-secondary)]'
               }`}
             >
