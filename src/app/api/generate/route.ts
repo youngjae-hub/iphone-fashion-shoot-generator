@@ -59,7 +59,7 @@ function buildPromptFromSettings(promptSettings?: CustomPromptSettings): { baseP
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { garmentImage, styleReferenceImages, poses, settings, providers, promptSettings } = body as GenerationRequest & { styleReferenceImages?: string[]; promptSettings?: CustomPromptSettings };
+    const { garmentImage, styleReferenceImages, backgroundSpotImages, poses, settings, providers, promptSettings } = body as GenerationRequest & { styleReferenceImages?: string[]; backgroundSpotImages?: string[]; promptSettings?: CustomPromptSettings };
 
     if (!garmentImage) {
       return NextResponse.json(
@@ -132,6 +132,7 @@ export async function POST(request: NextRequest) {
           negativePrompt: negativePrompt || settings.negativePrompt,
           garmentImage, // 업로드한 의류 이미지 전달
           styleReferenceImages, // 스타일 참조 이미지들 전달
+          backgroundSpotImages, // 배경 스팟 이미지들 전달
           customPrompt: basePrompt, // 커스텀 프롬프트 전달
         });
 

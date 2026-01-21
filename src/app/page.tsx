@@ -42,6 +42,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<'upload' | 'settings' | 'prompt' | 'provider' | 'training' | 'history'>('upload');
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [styleReferenceImages, setStyleReferenceImages] = useState<UploadedImage[]>([]);
+  const [backgroundSpotImages, setBackgroundSpotImages] = useState<UploadedImage[]>([]);
   const [activeLoRA, setActiveLoRA] = useState<LoRAModel | null>(null);
   const [promptSettings, setPromptSettings] = useState<CustomPromptSettings>(DEFAULT_CUSTOM_PROMPT_SETTINGS);
 
@@ -134,6 +135,7 @@ export default function Home() {
           body: JSON.stringify({
             garmentImage,
             styleReferenceImages: styleReferenceImages.map((img) => img.preview),
+            backgroundSpotImages: backgroundSpotImages.map((img) => img.preview),
             poses: settings.poses,
             settings,
             providers: providerConfig,
@@ -366,6 +368,9 @@ export default function Home() {
                 maxImages={5}
                 styleReferenceImages={styleReferenceImages}
                 onStyleReferenceUpload={setStyleReferenceImages}
+                backgroundSpotImages={backgroundSpotImages}
+                onBackgroundSpotUpload={setBackgroundSpotImages}
+                maxBackgroundSpotImages={5}
                 autoClassify={true}
                 onCategoryUpdate={handleCategoryUpdate}
               />

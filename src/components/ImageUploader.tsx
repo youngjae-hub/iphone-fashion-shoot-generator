@@ -12,6 +12,9 @@ interface ImageUploaderProps {
   styleReferenceImages?: UploadedImage[];
   onStyleReferenceUpload?: (images: UploadedImage[]) => void;
   maxStyleReferenceImages?: number;
+  backgroundSpotImages?: UploadedImage[];
+  onBackgroundSpotUpload?: (images: UploadedImage[]) => void;
+  maxBackgroundSpotImages?: number;
   autoClassify?: boolean; // 자동 분류 활성화
   onCategoryUpdate?: (id: string, category: GarmentCategory, confidence: number) => void;
 }
@@ -34,14 +37,19 @@ export default function ImageUploader({
   styleReferenceImages = [],
   onStyleReferenceUpload,
   maxStyleReferenceImages = 10,
+  backgroundSpotImages = [],
+  onBackgroundSpotUpload,
+  maxBackgroundSpotImages = 5,
   autoClassify = true,
   onCategoryUpdate,
 }: ImageUploaderProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [isStyleDragOver, setIsStyleDragOver] = useState(false);
+  const [isBackgroundSpotDragOver, setIsBackgroundSpotDragOver] = useState(false);
   const [classifyingIds, setClassifyingIds] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const styleInputRef = useRef<HTMLInputElement>(null);
+  const backgroundSpotInputRef = useRef<HTMLInputElement>(null);
 
   // AI 분류 호출
   const classifyGarment = async (imageId: string, imageBase64: string) => {
@@ -68,7 +76,7 @@ export default function ImageUploader({
   };
 
   const processFiles = useCallback(
-    async (files: FileList | File[], type: 'garment' | 'style-reference' = 'garment') => {
+    async (files: FileList | File[], type: 'garment' | 'style-reference' | 'background-spot' = 'garment') => {
       const fileArray = Array.from(files);
 
       if (type === 'style-reference') {
@@ -94,6 +102,32 @@ export default function ImageUploader({
         );
 
         onStyleReferenceUpload?.([...styleReferenceImages, ...newImages]);
+        return;
+      }
+
+      if (type === 'background-spot') {
+        // 배경 스팟 이미지 - 최대 maxBackgroundSpotImages개까지
+        const remainingSlots = maxBackgroundSpotImages - backgroundSpotImages.length;
+        const filesToProcess = fileArray.slice(0, remainingSlots);
+
+        const newImages: UploadedImage[] = await Promise.all(
+          filesToProcess.map(async (file) => {
+            const preview = await new Promise<string>((resolve) => {
+              const reader = new FileReader();
+              reader.onload = (e) => resolve(e.target?.result as string);
+              reader.readAsDataURL(file);
+            });
+
+            return {
+              id: uuidv4(),
+              file,
+              preview,
+              type: 'background-spot' as const,
+            };
+          })
+        );
+
+        onBackgroundSpotUpload?.([...backgroundSpotImages, ...newImages]);
         return;
       }
 
@@ -127,7 +161,7 @@ export default function ImageUploader({
         }
       }
     },
-    [maxImages, uploadedImages.length, onUpload, onStyleReferenceUpload, styleReferenceImages, maxStyleReferenceImages, autoClassify, classifyGarment]
+    [maxImages, uploadedImages.length, onUpload, onStyleReferenceUpload, styleReferenceImages, maxStyleReferenceImages, onBackgroundSpotUpload, backgroundSpotImages, maxBackgroundSpotImages, autoClassify, classifyGarment]
   );
 
   const handleDrop = useCallback(
@@ -179,6 +213,27 @@ export default function ImageUploader({
   const handleStyleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       processFiles(e.target.files, 'style-reference');
+    }
+  };
+
+  const handleBackgroundSpotDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsBackgroundSpotDragOver(false);
+      if (e.dataTransfer.files) {
+        processFiles(e.dataTransfer.files, 'background-spot');
+      }
+    },
+    [processFiles]
+  );
+
+  const handleBackgroundSpotClick = () => {
+    backgroundSpotInputRef.current?.click();
+  };
+
+  const handleBackgroundSpotFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      processFiles(e.target.files, 'background-spot');
     }
   };
 
@@ -391,6 +446,106 @@ export default function ImageUploader({
               <span>{styleReferenceImages.length} / {maxStyleReferenceImages} 참조 이미지</span>
               <button
                 onClick={() => onStyleReferenceUpload([])}
+                className="text-red-400 hover:text-red-300 transition-colors"
+              >
+                전체 삭제
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Background Spot Section - 촬영 장소/배경 스팟 */}
+      {onBackgroundSpotUpload && (
+        <div className="pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
+          <div className="flex items-center gap-2 mb-3">
+            <svg className="w-4 h-4" style={{ color: 'var(--accent)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <span className="text-sm font-medium">배경 스팟 이미지 (선택)</span>
+            <span className="text-xs px-2 py-0.5 rounded" style={{ background: 'rgba(139, 92, 246, 0.2)', color: 'rgb(139, 92, 246)' }}>
+              NEW
+            </span>
+          </div>
+          <p className="text-xs mb-3" style={{ color: 'var(--foreground-muted)' }}>
+            야외 렌탈 스튜디오, 카페, 거리 등 원하는 촬영 장소 사진을 업로드하면 해당 배경으로 결과물이 생성됩니다. (최대 {maxBackgroundSpotImages}장)
+          </p>
+
+          {/* Uploaded Background Spot Images Grid */}
+          {backgroundSpotImages.length > 0 && (
+            <div className="grid grid-cols-4 gap-2 mb-3">
+              {backgroundSpotImages.map((image) => (
+                <div
+                  key={image.id}
+                  className="relative group rounded-lg overflow-hidden"
+                  style={{ aspectRatio: '4/3', background: 'var(--background-tertiary)' }}
+                >
+                  <img
+                    src={image.preview}
+                    alt="Background spot"
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <button
+                      onClick={() => onBackgroundSpotUpload(backgroundSpotImages.filter((img) => img.id !== image.id))}
+                      className="p-1.5 rounded-full bg-red-500 hover:bg-red-600 transition-colors"
+                    >
+                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="absolute top-1 left-1">
+                    <span className="text-[10px] px-1 py-0.5 rounded" style={{ background: 'rgb(139, 92, 246)', color: 'white' }}>
+                      배경
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Upload Zone for Background Spot */}
+          {backgroundSpotImages.length < maxBackgroundSpotImages && (
+            <div
+              className={`p-4 rounded-lg border-2 border-dashed cursor-pointer transition-all ${isBackgroundSpotDragOver ? 'border-[rgb(139,92,246)] bg-[rgba(139,92,246,0.1)]' : 'border-[var(--border)] hover:border-[rgb(139,92,246)]'}`}
+              onDrop={handleBackgroundSpotDrop}
+              onDragOver={(e) => { e.preventDefault(); setIsBackgroundSpotDragOver(true); }}
+              onDragLeave={(e) => { e.preventDefault(); setIsBackgroundSpotDragOver(false); }}
+              onClick={handleBackgroundSpotClick}
+            >
+              <input
+                ref={backgroundSpotInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={handleBackgroundSpotFileChange}
+              />
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: 'var(--background-tertiary)' }}>
+                  <svg className="w-5 h-5" style={{ color: 'var(--foreground-muted)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-medium">촬영 장소 이미지 추가</p>
+                  <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                    렌탈 스튜디오, 카페, 야외 스팟 등 촬영 장소 사진
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Background Spot Count & Clear All */}
+          {backgroundSpotImages.length > 0 && (
+            <div className="flex justify-between items-center text-xs mt-2" style={{ color: 'var(--foreground-muted)' }}>
+              <span>{backgroundSpotImages.length} / {maxBackgroundSpotImages} 배경 스팟 이미지</span>
+              <button
+                onClick={() => onBackgroundSpotUpload([])}
                 className="text-red-400 hover:text-red-300 transition-colors"
               >
                 전체 삭제

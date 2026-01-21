@@ -44,10 +44,19 @@ export interface UploadedImage {
   id: string;
   file: File;
   preview: string;
-  type: 'garment' | 'background' | 'reference' | 'style-reference';
+  type: 'garment' | 'background' | 'reference' | 'style-reference' | 'background-spot';
   processedUrl?: string;
   category?: GarmentCategory; // AI가 판별한 의류 카테고리
   categoryConfidence?: number; // 분류 신뢰도 (0-1)
+}
+
+// Background Spot Types - 촬영 장소/배경 스팟
+export interface BackgroundSpot {
+  id: string;
+  name: string;
+  description?: string;
+  images: string[]; // base64 이미지들
+  createdAt: number;
 }
 
 export interface GeneratedImage {
@@ -135,11 +144,11 @@ export const DEFAULT_GENERATION_SETTINGS: GenerationSettings = {
 };
 
 export const POSE_CONFIGS: PoseConfig[] = [
-  { type: 'front', label: '정면', promptKr: '정면 포즈', promptEn: 'standing casually facing camera, weight on one leg, relaxed natural stance', enabled: true },
-  { type: 'side', label: '측면', promptKr: '옆 모습', promptEn: 'side profile angle, looking away naturally, candid walking moment', enabled: true },
-  { type: 'back', label: '뒷면', promptKr: '뒤 모습', promptEn: 'back view, slightly looking over shoulder, showing outfit back details', enabled: true },
-  { type: 'styled', label: '연출', promptKr: '자연스러운 연출', promptEn: 'lifestyle pose - sitting on chair, adjusting clothes, twirling skirt, hand in pocket, touching hair', enabled: true },
-  { type: 'detail', label: '디테일', promptKr: '디테일 클로즈업', promptEn: 'close-up 3/4 shot focusing on outfit details, fabric texture, accessories', enabled: true },
+  { type: 'front', label: '정면', promptKr: '정면 전신샷', promptEn: 'wide full body shot, standing casually facing camera, weight on one leg, relaxed natural stance, shot from distance with space around model', enabled: true },
+  { type: 'side', label: '측면', promptKr: '옆 전신샷', promptEn: 'wide full body shot, side profile angle, looking away naturally, candid walking moment, generous framing with environment visible', enabled: true },
+  { type: 'back', label: '뒷면', promptKr: '뒤 전신샷', promptEn: 'wide full body shot, back view, slightly looking over shoulder, showing outfit back details, shot from distance', enabled: true },
+  { type: 'styled', label: '연출', promptKr: '자연스러운 연출', promptEn: 'wide shot lifestyle pose - sitting on chair, adjusting clothes, twirling skirt, hand in pocket, touching hair, full body with surroundings', enabled: true },
+  { type: 'detail', label: '디테일', promptKr: '디테일 샷', promptEn: '3/4 body shot with comfortable framing, focusing on outfit details, fabric texture, accessories, not too tight', enabled: true },
 ];
 
 // ============================================
