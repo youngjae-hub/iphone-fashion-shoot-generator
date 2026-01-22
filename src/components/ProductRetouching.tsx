@@ -54,11 +54,44 @@ interface ProcessedImage {
   error?: string;
 }
 
-// 파일을 base64로 변환하는 함수
-function fileToBase64(file: File): Promise<string> {
+// 파일을 리사이즈된 base64로 변환하는 함수 (최대 1500px)
+function fileToResizedBase64(file: File, maxSize: number = 1500): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        // 리사이즈 필요 여부 확인
+        let { width, height } = img;
+        if (width > maxSize || height > maxSize) {
+          if (width > height) {
+            height = Math.round((height * maxSize) / width);
+            width = maxSize;
+          } else {
+            width = Math.round((width * maxSize) / height);
+            height = maxSize;
+          }
+        }
+
+        // Canvas로 리사이즈
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Canvas context not available'));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // JPEG로 압축 (품질 0.9)
+        const resizedBase64 = canvas.toDataURL('image/jpeg', 0.9);
+        console.log(`[Resize] ${img.naturalWidth}x${img.naturalHeight} -> ${width}x${height}, size: ${Math.round(resizedBase64.length / 1024)}KB`);
+        resolve(resizedBase64);
+      };
+      img.onerror = reject;
+      img.src = reader.result as string;
+    };
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
@@ -232,8 +265,8 @@ export default function ProductRetouching() {
       setProcessedImages([...results]);
 
       try {
-        // 파일을 base64로 변환
-        const base64Image = await fileToBase64(image.file);
+        // 파일을 리사이즈된 base64로 변환
+        const base64Image = await fileToResizedBase64(image.file);
 
         // API 호출
         const response = await fetch('/api/retouch', {
