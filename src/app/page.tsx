@@ -10,6 +10,7 @@ import {
   LoRATraining,
   History,
   PromptEditor,
+  ProductRetouching,
 } from '@/components';
 import {
   UploadedImage,
@@ -40,6 +41,7 @@ export default function Home() {
     tryOn: Record<string, boolean>;
   } | undefined>();
   const [activeTab, setActiveTab] = useState<'upload' | 'settings' | 'prompt' | 'provider' | 'training' | 'history'>('upload');
+  const [mainTab, setMainTab] = useState<'model-cut' | 'product-retouch'>('model-cut');
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [styleReferenceImages, setStyleReferenceImages] = useState<UploadedImage[]>([]);
   const [backgroundSpotImages, setBackgroundSpotImages] = useState<UploadedImage[]>([]);
@@ -330,8 +332,38 @@ export default function Home() {
         </div>
       </header>
 
+      {/* Main Tab Navigation */}
+      <div className="border-b" style={{ borderColor: 'var(--border)', background: 'var(--background-secondary)' }}>
+        <div className="px-6 flex gap-0">
+          <button
+            onClick={() => setMainTab('model-cut')}
+            className={`py-3 px-5 text-sm font-medium border-b-2 transition-all ${
+              mainTab === 'model-cut'
+                ? 'border-[var(--foreground)] text-[var(--foreground)]'
+                : 'border-transparent text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
+            }`}
+          >
+            아이폰 모델컷
+          </button>
+          <button
+            onClick={() => setMainTab('product-retouch')}
+            className={`py-3 px-5 text-sm font-medium border-b-2 transition-all ${
+              mainTab === 'product-retouch'
+                ? 'border-[var(--foreground)] text-[var(--foreground)]'
+                : 'border-transparent text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
+            }`}
+          >
+            의류 제품컷 리터칭
+          </button>
+        </div>
+      </div>
+
       {/* Main Content */}
-      <main className="flex-1 flex">
+      <main className="flex-1 flex overflow-hidden">
+        {mainTab === 'product-retouch' ? (
+          <ProductRetouching />
+        ) : (
+          <>
         {/* Sidebar */}
         <aside className="w-full md:w-[360px] border-r flex-shrink-0 overflow-y-auto" style={{ borderColor: 'var(--border)' }}>
           <div className="p-5 space-y-5">
@@ -488,6 +520,8 @@ export default function Home() {
             onRegenerate={handleRegenerate}
           />
         </div>
+          </>
+        )}
       </main>
 
       {/* Footer */}
