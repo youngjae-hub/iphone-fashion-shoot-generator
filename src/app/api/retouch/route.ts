@@ -52,11 +52,10 @@ export async function POST(request: NextRequest) {
 
       try {
         console.log(`[${brand}] Image size: ${image.length} bytes`);
-        console.log(`[${brand}] Image type: ${image.substring(0, 50)}...`);
 
-        // 새로운 모델 시도: ilkerc/rembg
+        // lucataco/remove-bg 모델 사용 (가장 안정적)
         const output = await replicate.run(
-          "ilkerc/rembg:9a665d6e3c632d88d4c4a9c99eba7633a2e48e67a4dd61b2c51e8f9f2c0f2d87",
+          "lucataco/remove-bg:95fcc2a26d3899cd6c2691c900465aaeff466285a65c14638cc5f36f34befaf1",
           {
             input: {
               image: image,
@@ -65,45 +64,26 @@ export async function POST(request: NextRequest) {
         );
 
         console.log(`[${brand}] Output type: ${typeof output}`);
-        console.log(`[${brand}] Output:`, output);
 
         if (output && typeof output === 'string') {
           processedImageUrl = output;
           console.log(`[${brand}] Background removal completed`);
-        } else if (output && typeof output === 'object') {
-          // ReadableStream 또는 다른 형태일 수 있음
+        } else if (output && typeof output === 'object' && 'url' in output) {
+          // FileOutput 형태일 수 있음
+          processedImageUrl = (output as { url: string }).url;
+          console.log(`[${brand}] Background removal completed (FileOutput)`);
+        } else if (output) {
           processedImageUrl = String(output);
-          console.log(`[${brand}] Background removal completed (object)`);
+          console.log(`[${brand}] Background removal completed (string conversion)`);
         }
       } catch (rembgError: unknown) {
-        console.error('rembg error:', rembgError);
+        console.error('remove-bg error:', rembgError);
         const errorMessage = rembgError instanceof Error ? rembgError.message : String(rembgError);
 
-        // 대체 모델 시도: cjwbw/rembg
-        try {
-          console.log(`[${brand}] Trying fallback model...`);
-          const output = await replicate.run(
-            "cjwbw/rembg:fb8af171cfa1616ddcf1242c093f9c46bcada5ad4cf6f2fbe8b81b330ec5c003",
-            {
-              input: {
-                image: image,
-              }
-            }
-          );
-
-          if (output && typeof output === 'string') {
-            processedImageUrl = output;
-          } else if (output && typeof output === 'object') {
-            processedImageUrl = String(output);
-          }
-        } catch (fallbackError: unknown) {
-          console.error('fallback rembg error:', fallbackError);
-          const fallbackErrorMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-          return NextResponse.json(
-            { success: false, error: `배경 제거 실패: ${errorMessage}. Fallback: ${fallbackErrorMessage}` },
-            { status: 500 }
-          );
-        }
+        return NextResponse.json(
+          { success: false, error: `배경 제거 실패: ${errorMessage}` },
+          { status: 500 }
+        );
       }
     }
 
