@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Replicate from 'replicate';
 
-export const maxDuration = 60;
+export const maxDuration = 300; // Pro plan: 최대 300초 허용
 export const dynamic = 'force-dynamic';
 
 interface BrandConfig {
@@ -214,39 +214,32 @@ export async function POST(request: NextRequest) {
         }
       }
     } else if (retouchMethod === 'edge-inpaint') {
-      // Plan B: Magic Image Refiner로 이미지 품질 개선 (마스크 불필요)
+      // Plan B: Real-ESRGAN으로 이미지 업스케일 + 품질 개선 (빠름, ~10초)
       const refinerStart = Date.now();
-      console.log(`[Retouch API][${brand}] Starting image enhancement (Magic Image Refiner)...`);
+      console.log(`[Retouch API][${brand}] Starting image enhancement (Real-ESRGAN)...`);
 
       try {
-        // Magic Image Refiner: 이미지 품질 개선 + 엣지 스무딩
-        // resemblance: 0.85 (원본 유지도 높음), creativity: 0.15 (미세 변경)
-        const refinerOutput = await replicate.run(
-          "fermatresearch/magic-image-refiner:507ddf6f977a7e30e46c0daefd30de7d563c72322f9e4cf7cbac52ef0f667b13",
+        // Real-ESRGAN: 빠른 이미지 품질 개선 (약 10초)
+        const esrganOutput = await replicate.run(
+          "nightmareai/real-esrgan:f121d640bd286e1fdc67f9799164c1d5be36ff74576ee11c803ae5b665dd46aa",
           {
             input: {
               image: processedImageUrl,
-              prompt: "professional e-commerce product photo, clean smooth edges, high quality clothing photography, pristine fabric, seamless silhouette, studio lighting, commercial quality, sharp details",
-              negative_prompt: "rough edges, jagged silhouette, pixelated, blurry, low quality, artifacts, noise, compression artifacts",
-              resolution: "original",
-              resemblance: 0.85, // 원본 유지도 높임
-              creativity: 0.15, // 미세한 개선만
-              hdr: 0,
-              steps: 20,
-              guidance_scale: 7,
+              scale: 2, // 2배 업스케일 후 다운샘플링으로 품질 개선
+              face_enhance: false,
             }
           }
         );
 
-        if (refinerOutput) {
-          const refinerUrl = extractUrlFromOutput(refinerOutput);
-          processedImageUrl = await urlToBase64(refinerUrl);
+        if (esrganOutput) {
+          const esrganUrl = extractUrlFromOutput(esrganOutput);
+          processedImageUrl = await urlToBase64(esrganUrl);
           const refinerDuration = Date.now() - refinerStart;
-          timings.push({ step: 'Magic Refiner', duration: refinerDuration });
-          console.log(`[Retouch API][${brand}] Magic Image Refiner completed (${(refinerDuration / 1000).toFixed(1)}s)`);
+          timings.push({ step: 'Real-ESRGAN', duration: refinerDuration });
+          console.log(`[Retouch API][${brand}] Real-ESRGAN completed (${(refinerDuration / 1000).toFixed(1)}s)`);
         }
       } catch (refinerError: unknown) {
-        console.error('[Retouch API] Magic Image Refiner error:', refinerError);
+        console.error('[Retouch API] Real-ESRGAN error:', refinerError);
         console.log(`[Retouch API][${brand}] Continuing with previous image...`);
       }
     }
