@@ -373,10 +373,13 @@ export async function POST(request: NextRequest) {
       // 누끼된 제품에 자연스러운 스튜디오 조명과 그림자 추가
       const studioStart = Date.now();
       console.log(`[Retouch API][${brand}] Starting IC-Light studio relighting...`);
+      console.log(`[Retouch API][${brand}] Input image length: ${processedImageUrl.length} chars`);
 
       try {
         // IC-Light: 제품 사진 전문 조명 모델
         // 누끼된 이미지에 스튜디오 조명 + 배경 + 그림자 추가
+        console.log(`[Retouch API][${brand}] Calling IC-Light model...`);
+
         const icLightOutput = await replicate.run(
           "zsxkib/ic-light:8cc07fa3a5a8f64595bc0014a26b376e046d40c86f86c32b1b67ce73ece7067c",
           {
@@ -397,16 +400,25 @@ export async function POST(request: NextRequest) {
           }
         );
 
+        console.log(`[Retouch API][${brand}] IC-Light output:`, icLightOutput);
+
         if (icLightOutput) {
           const icLightUrl = extractUrlFromOutput(icLightOutput);
+          console.log(`[Retouch API][${brand}] IC-Light URL: ${icLightUrl.substring(0, 100)}...`);
           processedImageUrl = await urlToBase64(icLightUrl);
           const studioDuration = Date.now() - studioStart;
           timings.push({ step: 'IC-Light Studio', duration: studioDuration });
           console.log(`[Retouch API][${brand}] IC-Light completed (${(studioDuration / 1000).toFixed(1)}s)`);
+        } else {
+          console.error(`[Retouch API][${brand}] IC-Light returned empty output`);
         }
       } catch (studioError: unknown) {
-        console.error('[Retouch API] IC-Light error:', studioError);
-        console.log(`[Retouch API][${brand}] Continuing with previous image...`);
+        const errorMessage = studioError instanceof Error ? studioError.message : String(studioError);
+        console.error(`[Retouch API][${brand}] IC-Light error:`, errorMessage);
+        console.error(`[Retouch API][${brand}] Full error:`, studioError);
+        // 에러 시에도 타이밍 기록
+        const studioDuration = Date.now() - studioStart;
+        timings.push({ step: 'IC-Light (실패)', duration: studioDuration });
       }
     }
 

@@ -145,7 +145,7 @@ const BRAND_CONFIGS = {
     name: '🚀 Plan F (IC-Light Studio)',
     format: 'png' as const,
     nukki: true, // BiRefNet 누끼 후 IC-Light로 스튜디오 조명 추가
-    backgroundColor: null, // IC-Light가 흰색 배경 생성
+    backgroundColor: '#FFFFFF', // 흰색 배경 (IC-Light 실패 시 폴백)
     shadow: false, // IC-Light가 자연스러운 그림자 생성
     cropWidth: 2000,
     cropHeight: 3000,
