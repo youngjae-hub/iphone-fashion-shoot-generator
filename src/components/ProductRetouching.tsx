@@ -6,7 +6,7 @@ import { UploadedImage } from '@/types';
 // 도식화 방법 타입
 type FlatlayMethod = 'sdxl' | 'idm-vton' | 'tps' | 'skeleton';
 // 리터칭 방법 타입
-type RetouchMethod = 'none' | 'photoroom' | 'edge-inpaint' | 'clipping-magic' | 'pixelcut' | 'magic-refiner-mask';
+type RetouchMethod = 'none' | 'photoroom' | 'edge-inpaint' | 'clipping-magic' | 'pixelcut' | 'magic-refiner-mask' | 'ai-studio';
 
 // 브랜드별 설정
 const BRAND_CONFIGS = {
@@ -140,6 +140,32 @@ const BRAND_CONFIGS = {
     silhouetteRefine: false,
     flatlayMethod: 'sdxl' as FlatlayMethod,
     retouchMethod: 'magic-refiner-mask' as RetouchMethod,
+  },
+  'test-planF1': {
+    name: '🚀 Plan F-1 (AI Studio Direct)',
+    format: 'png' as const,
+    nukki: false, // 누끼 없이 AI가 직접 스튜디오 이미지 생성
+    backgroundColor: null,
+    shadow: false, // AI가 자연스러운 그림자 생성
+    cropWidth: 2000,
+    cropHeight: 3000,
+    flatlay: false,
+    silhouetteRefine: false,
+    flatlayMethod: 'sdxl' as FlatlayMethod,
+    retouchMethod: 'ai-studio' as RetouchMethod,
+  },
+  'test-planF2': {
+    name: '🚀 Plan F-2 (누끼+AI Studio)',
+    format: 'png' as const,
+    nukki: true, // 먼저 누끼 후 AI 스튜디오 배경 생성
+    backgroundColor: null,
+    shadow: false,
+    cropWidth: 2000,
+    cropHeight: 3000,
+    flatlay: false,
+    silhouetteRefine: false,
+    flatlayMethod: 'sdxl' as FlatlayMethod,
+    retouchMethod: 'ai-studio' as RetouchMethod,
   },
 } as const;
 
