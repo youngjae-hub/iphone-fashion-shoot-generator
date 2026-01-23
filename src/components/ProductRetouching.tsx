@@ -141,25 +141,12 @@ const BRAND_CONFIGS = {
     flatlayMethod: 'sdxl' as FlatlayMethod,
     retouchMethod: 'magic-refiner-mask' as RetouchMethod,
   },
-  'test-planF1': {
-    name: '🚀 Plan F-1 (AI Studio Direct)',
+  'test-planF': {
+    name: '🚀 Plan F (IC-Light Studio)',
     format: 'png' as const,
-    nukki: false, // 누끼 없이 AI가 직접 스튜디오 이미지 생성
-    backgroundColor: null,
-    shadow: false, // AI가 자연스러운 그림자 생성
-    cropWidth: 2000,
-    cropHeight: 3000,
-    flatlay: false,
-    silhouetteRefine: false,
-    flatlayMethod: 'sdxl' as FlatlayMethod,
-    retouchMethod: 'ai-studio' as RetouchMethod,
-  },
-  'test-planF2': {
-    name: '🚀 Plan F-2 (누끼+AI Studio)',
-    format: 'png' as const,
-    nukki: true, // 먼저 누끼 후 AI 스튜디오 배경 생성
-    backgroundColor: null,
-    shadow: false,
+    nukki: true, // BiRefNet 누끼 후 IC-Light로 스튜디오 조명 추가
+    backgroundColor: null, // IC-Light가 흰색 배경 생성
+    shadow: false, // IC-Light가 자연스러운 그림자 생성
     cropWidth: 2000,
     cropHeight: 3000,
     flatlay: false,

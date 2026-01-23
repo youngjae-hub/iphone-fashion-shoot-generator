@@ -369,69 +369,43 @@ export async function POST(request: NextRequest) {
         console.log(`[Retouch API][${brand}] Continuing with previous image...`);
       }
     } else if (retouchMethod === 'ai-studio') {
-      // Plan F: AI Studio Generation (Pikes AI 스타일)
-      // 원본 이미지를 기반으로 스튜디오 품질의 새 이미지 생성
+      // Plan F: IC-Light 기반 스튜디오 조명 (Pikes AI 스타일)
+      // 누끼된 제품에 자연스러운 스튜디오 조명과 그림자 추가
       const studioStart = Date.now();
-      console.log(`[Retouch API][${brand}] Starting AI Studio Generation (Pikes style)...`);
+      console.log(`[Retouch API][${brand}] Starting IC-Light studio relighting...`);
 
       try {
-        // 누끼 여부에 따라 다른 접근 방식 사용
-        const isNukkied = config.nukki;
-
-        if (isNukkied) {
-          // F-2: 누끼된 이미지 → Inpainting으로 배경+그림자 생성
-          console.log(`[Retouch API][${brand}] Using inpainting for studio background...`);
-
-          // SDXL Inpainting으로 배경 영역에 스튜디오 환경 생성
-          const inpaintOutput = await replicate.run(
-            "stability-ai/sdxl:7762fd07cf82c948538e41f63f77d685e02b063e37e496e96eefd46c929f9bdc",
-            {
-              input: {
-                image: processedImageUrl,
-                prompt: "clean solid white studio background, soft diffused top-down lighting, subtle natural shadow on white floor, professional product photography backdrop, minimalist aesthetic, high resolution, commercial quality studio",
-                negative_prompt: "text, watermark, logo, busy pattern, colored background, harsh shadows, multiple shadows, dirty, cluttered",
-                prompt_strength: 0.3, // 원본 제품 최대 유지, 배경만 변경
-                num_inference_steps: 25,
-                guidance_scale: 7.0,
-                scheduler: "K_EULER",
-              }
+        // IC-Light: 제품 사진 전문 조명 모델
+        // 누끼된 이미지에 스튜디오 조명 + 배경 + 그림자 추가
+        const icLightOutput = await replicate.run(
+          "zsxkib/ic-light:8cc07fa3a5a8f64595bc0014a26b376e046d40c86f86c32b1b67ce73ece7067c",
+          {
+            input: {
+              prompt: "professional studio product photography, clean solid white background, soft top-down lighting, natural soft ambient shadow on white floor, minimalist aesthetic, high resolution, commercial quality, e-commerce photo",
+              subject_image: processedImageUrl,
+              light_source: "Top Light", // 위에서 아래로 조명 → 자연스러운 바닥 그림자
+              negative_prompt: "dark, moody, dramatic, colored background, harsh shadows, multiple shadows, busy background, cluttered, low quality",
+              cfg: 2.5, // 낮은 값 = 더 자연스러운 결과
+              steps: 25,
+              lowres_denoise: 0.95, // 배경 생성 강도 높게
+              highres_denoise: 0.5, // 제품 디테일 유지
+              highres_scale: 1.5,
+              output_format: "png",
+              output_quality: 95,
+              appended_prompt: "best quality, high resolution, sharp focus on fabric texture",
             }
-          );
-
-          if (inpaintOutput && Array.isArray(inpaintOutput) && inpaintOutput.length > 0) {
-            const inpaintUrl = extractUrlFromOutput(inpaintOutput[0]);
-            processedImageUrl = await urlToBase64(inpaintUrl);
           }
-        } else {
-          // F-1: 원본 이미지 → img2img로 전체 스튜디오 품질 변환
-          console.log(`[Retouch API][${brand}] Using img2img for studio transformation...`);
+        );
 
-          const studioOutput = await replicate.run(
-            "stability-ai/sdxl:7762fd07cf82c948538e41f63f77d685e02b063e37e496e96eefd46c929f9bdc",
-            {
-              input: {
-                image: processedImageUrl,
-                prompt: "Professional studio product photography, clean solid white background, soft top-down lighting, natural soft ambient shadows on the floor, high resolution, minimalist aesthetic, sharp focus on fabric texture, e-commerce product photo, pristine clean garment, perfect lighting, commercial quality",
-                negative_prompt: "hanger, mannequin, model, person, wrinkles, creases, dirty, stains, low quality, blurry, distorted, cropped, watermark, text, logo, busy background, cluttered",
-                prompt_strength: 0.35, // 원본 구조 65% 유지, 스타일 35% 적용 (더 보수적)
-                num_inference_steps: 30,
-                guidance_scale: 7.5,
-                scheduler: "K_EULER",
-              }
-            }
-          );
-
-          if (studioOutput && Array.isArray(studioOutput) && studioOutput.length > 0) {
-            const studioUrl = extractUrlFromOutput(studioOutput[0]);
-            processedImageUrl = await urlToBase64(studioUrl);
-          }
+        if (icLightOutput) {
+          const icLightUrl = extractUrlFromOutput(icLightOutput);
+          processedImageUrl = await urlToBase64(icLightUrl);
+          const studioDuration = Date.now() - studioStart;
+          timings.push({ step: 'IC-Light Studio', duration: studioDuration });
+          console.log(`[Retouch API][${brand}] IC-Light completed (${(studioDuration / 1000).toFixed(1)}s)`);
         }
-
-        const studioDuration = Date.now() - studioStart;
-        timings.push({ step: isNukkied ? 'AI Studio (Inpaint)' : 'AI Studio (SDXL)', duration: studioDuration });
-        console.log(`[Retouch API][${brand}] AI Studio Generation completed (${(studioDuration / 1000).toFixed(1)}s)`);
       } catch (studioError: unknown) {
-        console.error('[Retouch API] AI Studio error:', studioError);
+        console.error('[Retouch API] IC-Light error:', studioError);
         console.log(`[Retouch API][${brand}] Continuing with previous image...`);
       }
     }
