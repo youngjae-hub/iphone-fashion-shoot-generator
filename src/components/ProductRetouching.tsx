@@ -3,6 +3,11 @@
 import { useState, useCallback, useRef } from 'react';
 import { UploadedImage } from '@/types';
 
+// 도식화 방법 타입
+type FlatlayMethod = 'sdxl' | 'idm-vton' | 'tps' | 'skeleton';
+// 리터칭 방법 타입
+type RetouchMethod = 'none' | 'photoroom' | 'edge-inpaint';
+
 // 브랜드별 설정
 const BRAND_CONFIGS = {
   'dana-peta': {
@@ -10,9 +15,13 @@ const BRAND_CONFIGS = {
     format: 'jpg' as const,
     nukki: true,
     backgroundColor: '#F8F8F8',
-    shadow: true,
+    shadow: true, // 밑단 아래로 미세하게 떨어지는 자연스러운 그림자
     cropWidth: 2000,
     cropHeight: 3000,
+    flatlay: false,
+    silhouetteRefine: false, // 비활성화 - SDXL이 화질 저하 유발
+    flatlayMethod: 'sdxl' as FlatlayMethod,
+    retouchMethod: 'none' as RetouchMethod,
   },
   'jijae': {
     name: '지재',
@@ -22,6 +31,10 @@ const BRAND_CONFIGS = {
     shadow: false,
     cropWidth: 2000,
     cropHeight: 3000,
+    flatlay: false,
+    silhouetteRefine: false,
+    flatlayMethod: 'sdxl' as FlatlayMethod,
+    retouchMethod: 'none' as RetouchMethod,
   },
   'marchimara': {
     name: '마치마라',
@@ -31,6 +44,10 @@ const BRAND_CONFIGS = {
     shadow: false,
     cropWidth: 2000,
     cropHeight: 3000,
+    flatlay: false,
+    silhouetteRefine: false,
+    flatlayMethod: 'sdxl' as FlatlayMethod,
+    retouchMethod: 'none' as RetouchMethod,
   },
   'kream': {
     name: 'KREAM',
@@ -40,6 +57,50 @@ const BRAND_CONFIGS = {
     shadow: false,
     cropWidth: 1120,
     cropHeight: 1120,
+    flatlay: false,
+    silhouetteRefine: false,
+    flatlayMethod: 'sdxl' as FlatlayMethod,
+    retouchMethod: 'none' as RetouchMethod,
+  },
+  // 리터칭 테스트용 브랜드들
+  'test-baseline': {
+    name: '🔬 기준 (누끼만)',
+    format: 'png' as const,
+    nukki: true,
+    backgroundColor: '#F8F8F8',
+    shadow: false,
+    cropWidth: 2000,
+    cropHeight: 3000,
+    flatlay: false,
+    silhouetteRefine: false,
+    flatlayMethod: 'sdxl' as FlatlayMethod,
+    retouchMethod: 'none' as RetouchMethod,
+  },
+  'test-planA': {
+    name: '🧪 Plan A (Photoroom)',
+    format: 'png' as const,
+    nukki: true,
+    backgroundColor: '#F8F8F8',
+    shadow: false,
+    cropWidth: 2000,
+    cropHeight: 3000,
+    flatlay: false,
+    silhouetteRefine: false,
+    flatlayMethod: 'sdxl' as FlatlayMethod,
+    retouchMethod: 'photoroom' as RetouchMethod,
+  },
+  'test-planB': {
+    name: '🧪 Plan B (Edge Inpaint)',
+    format: 'png' as const,
+    nukki: true,
+    backgroundColor: '#F8F8F8',
+    shadow: false,
+    cropWidth: 2000,
+    cropHeight: 3000,
+    flatlay: false,
+    silhouetteRefine: false,
+    flatlayMethod: 'sdxl' as FlatlayMethod,
+    retouchMethod: 'edge-inpaint' as RetouchMethod,
   },
 } as const;
 
@@ -52,6 +113,7 @@ interface ProcessedImage {
   fileName: string;
   status: 'processing' | 'completed' | 'error';
   error?: string;
+  timings?: { step: string; duration: number }[];
 }
 
 // 파일을 리사이즈된 base64로 변환하는 함수 (최대 1500px)
@@ -97,7 +159,44 @@ function fileToResizedBase64(file: File, maxSize: number = 1500): Promise<string
   });
 }
 
-// Canvas를 사용한 이미지 후처리 함수
+// 이미지의 실제 콘텐츠 영역(바운딩 박스) 감지
+function detectContentBounds(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number
+): { top: number; bottom: number; left: number; right: number } {
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+
+  let top = height;
+  let bottom = 0;
+  let left = width;
+  let right = 0;
+
+  // 알파 채널이 있는 픽셀 찾기 (투명하지 않은 부분)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = (y * width + x) * 4;
+      const alpha = data[idx + 3];
+
+      // 알파값이 10 이상인 픽셀을 콘텐츠로 간주
+      if (alpha > 10) {
+        if (y < top) top = y;
+        if (y > bottom) bottom = y;
+        if (x < left) left = x;
+        if (x > right) right = x;
+      }
+    }
+  }
+
+  return { top, bottom, left, right };
+}
+
+// 상단(목 라인) 부드럽게 페더링 처리 - 현재 비활성화
+// TODO: 핸드리터칭 레퍼런스 분석 후 재설계 필요
+// function applyTopFeathering(...) { ... }
+
+// Canvas를 사용한 이미지 후처리 함수 (개선된 버전)
 async function postProcessImage(
   imageUrl: string,
   config: typeof BRAND_CONFIGS[BrandKey]
@@ -107,6 +206,27 @@ async function postProcessImage(
     img.crossOrigin = 'anonymous';
 
     img.onload = () => {
+      // 1단계: 원본 이미지에서 콘텐츠 영역 감지
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d');
+
+      if (!tempCtx) {
+        reject(new Error('Canvas context not available'));
+        return;
+      }
+
+      tempCanvas.width = img.width;
+      tempCanvas.height = img.height;
+      tempCtx.drawImage(img, 0, 0);
+
+      // 콘텐츠 바운딩 박스 감지
+      const bounds = detectContentBounds(tempCtx, img.width, img.height);
+
+      // 콘텐츠 영역 크기
+      const contentWidth = bounds.right - bounds.left;
+      const contentHeight = bounds.bottom - bounds.top;
+
+      // 2단계: 최종 캔버스 생성
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
 
@@ -115,65 +235,59 @@ async function postProcessImage(
         return;
       }
 
-      // 캔버스 크기 설정
       canvas.width = config.cropWidth;
       canvas.height = config.cropHeight;
 
-      // 배경색 적용 (투명이 아닌 경우)
+      // 배경색 적용
       if (config.backgroundColor) {
         ctx.fillStyle = config.backgroundColor;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
 
-      // 이미지 비율 계산 및 중앙 배치
-      const imgRatio = img.width / img.height;
+      // 3단계: 비율 계산 (핸드리터칭 레퍼런스 기준)
+      // 레퍼런스 분석 결과: 의류가 프레임의 약 75-80% 차지
+      const contentRatio = contentWidth / contentHeight;
       const canvasRatio = canvas.width / canvas.height;
+
+      // 스케일: 레퍼런스 기준 약 0.78 (상하좌우 여백 약 11%)
+      const baseScale = 0.78;
 
       let drawWidth: number;
       let drawHeight: number;
-      let drawX: number;
-      let drawY: number;
 
-      // 이미지를 캔버스에 맞추되 여백을 두고 배치 (80% 크기로)
-      const scale = 0.85;
-
-      if (imgRatio > canvasRatio) {
-        // 이미지가 더 넓음
-        drawWidth = canvas.width * scale;
-        drawHeight = drawWidth / imgRatio;
+      if (contentRatio > canvasRatio) {
+        // 콘텐츠가 더 넓음 - 가로 기준
+        drawWidth = canvas.width * baseScale;
+        drawHeight = drawWidth / contentRatio;
       } else {
-        // 이미지가 더 높음
-        drawHeight = canvas.height * scale;
-        drawWidth = drawHeight * imgRatio;
+        // 콘텐츠가 더 높음 - 세로 기준
+        drawHeight = canvas.height * baseScale;
+        drawWidth = drawHeight * contentRatio;
       }
 
-      drawX = (canvas.width - drawWidth) / 2;
-      drawY = (canvas.height - drawHeight) / 2;
+      // 정중앙 배치 (레퍼런스와 동일)
+      const drawX = (canvas.width - drawWidth) / 2;
+      const drawY = (canvas.height - drawHeight) / 2;
 
-      // 그림자 추가 (다나앤페타)
+      // 의류 이미지 그리기 (콘텐츠 영역만)
+      // 밑단 아래로 자연스럽게 떨어지는 미세한 그림자 적용
       if (config.shadow) {
         ctx.save();
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.15)';
-        ctx.shadowBlur = 30;
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.08)';
+        ctx.shadowBlur = 15;
         ctx.shadowOffsetX = 0;
-        ctx.shadowOffsetY = 20;
-
-        // 그림자를 위한 임시 도형 그리기
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.01)';
-        ctx.beginPath();
-        ctx.ellipse(
-          canvas.width / 2,
-          drawY + drawHeight + 10,
-          drawWidth * 0.4,
-          15,
-          0, 0, Math.PI * 2
-        );
-        ctx.fill();
-        ctx.restore();
+        ctx.shadowOffsetY = 8;
       }
 
-      // 이미지 그리기
-      ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+      ctx.drawImage(
+        img,
+        bounds.left, bounds.top, contentWidth, contentHeight,
+        drawX, drawY, drawWidth, drawHeight
+      );
+
+      if (config.shadow) {
+        ctx.restore();
+      }
 
       // 포맷에 따라 출력
       const format = config.format === 'png' ? 'image/png' : 'image/jpeg';
@@ -197,6 +311,8 @@ export default function ProductRetouching() {
   const [processedImages, setProcessedImages] = useState<ProcessedImage[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
+  const [previewZoom, setPreviewZoom] = useState(1);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const brandConfig = BRAND_CONFIGS[activeBrand];
@@ -269,6 +385,7 @@ export default function ProductRetouching() {
         const base64Image = await fileToResizedBase64(image.file);
 
         // API 호출
+        console.log(`[Retouch] Sending request for ${image.file.name}...`);
         const response = await fetch('/api/retouch', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -279,20 +396,50 @@ export default function ProductRetouching() {
           }),
         });
 
-        const data = await response.json();
+        console.log(`[Retouch] Response status: ${response.status}`);
 
-        if (data.success) {
+        // 응답 텍스트를 먼저 읽음
+        const responseText = await response.text();
+        console.log(`[Retouch] Response body (first 200 chars): ${responseText.slice(0, 200)}`);
+
+        // JSON 파싱 시도
+        let data;
+        try {
+          data = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error('[Retouch] JSON parse error:', parseError);
+          processedImage.status = 'error';
+          processedImage.error = `응답 파싱 실패: ${responseText.slice(0, 100)}`;
+          setProcessedImages([...results]);
+          continue;
+        }
+
+        // HTTP 응답 상태 체크
+        if (!response.ok) {
+          console.error(`[Retouch] HTTP ${response.status}:`, data);
+          processedImage.status = 'error';
+          processedImage.error = data.error || `HTTP ${response.status} 오류`;
+        } else if (data.success) {
+          console.log(`[Retouch] Success! Processing image...`);
+          // 타이밍 정보 저장
+          if (data.timings) {
+            processedImage.timings = data.timings;
+            console.log(`[Retouch] Timings:`, data.timings.map((t: { step: string; duration: number }) => `${t.step}: ${(t.duration / 1000).toFixed(1)}s`).join(', '));
+          }
           // 누끼 처리된 이미지에 배경색/그림자/크롭 적용
           const finalImage = await postProcessImage(data.processedImage, brandConfig);
           processedImage.processedUrl = finalImage;
           processedImage.status = 'completed';
+          console.log(`[Retouch] Completed!`);
         } else {
+          console.error('[Retouch] API returned error:', data.error);
           processedImage.status = 'error';
           processedImage.error = data.error || '처리 실패';
         }
       } catch (error) {
+        console.error('[Retouch] Client error:', error);
         processedImage.status = 'error';
-        processedImage.error = '서버 오류';
+        processedImage.error = error instanceof Error ? error.message : '클라이언트 오류';
       }
 
       setProcessedImages([...results]);
@@ -395,6 +542,10 @@ export default function ProductRetouching() {
                   <span>하단 드롭 쉐도우</span>
                 </div>
               )}
+              <div className="flex justify-between">
+                <span>도식화</span>
+                <span>{brandConfig.flatlay ? '플랫레이 스타일' : 'X'}</span>
+              </div>
             </div>
           </div>
 
@@ -540,7 +691,11 @@ export default function ProductRetouching() {
                         <img
                           src={img.originalUrl}
                           alt="원본"
-                          className="w-full h-full object-cover"
+                          className="w-full h-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                          onClick={() => {
+                            setPreviewImage({ url: img.originalUrl, title: `${img.fileName} - 원본` });
+                            setPreviewZoom(1);
+                          }}
                         />
                         <span className="absolute bottom-1 left-1 text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(0,0,0,0.6)', color: 'white' }}>
                           원본
@@ -572,7 +727,11 @@ export default function ProductRetouching() {
                             <img
                               src={img.processedUrl}
                               alt="결과"
-                              className="w-full h-full object-contain"
+                              className="w-full h-full object-contain cursor-pointer hover:opacity-90 transition-opacity"
+                              onClick={() => {
+                                setPreviewImage({ url: img.processedUrl, title: `${img.fileName} - 결과` });
+                                setPreviewZoom(1);
+                              }}
                             />
                             <span className="absolute bottom-1 left-1 text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(0,0,0,0.6)', color: 'white' }}>
                               결과
@@ -581,20 +740,37 @@ export default function ProductRetouching() {
                         )}
                       </div>
                     </div>
-                    {/* 파일명 & 다운로드 */}
-                    <div className="p-2 flex items-center justify-between">
-                      <span className="text-xs truncate" style={{ color: 'var(--foreground-muted)' }}>
-                        {img.fileName}
-                      </span>
-                      {img.status === 'completed' && (
-                        <button
-                          onClick={() => handleDownload(img)}
-                          className="p-1 rounded hover:bg-[var(--accent-light)] transition-colors"
-                        >
-                          <svg className="w-4 h-4" style={{ color: 'var(--foreground-muted)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                          </svg>
-                        </button>
+                    {/* 파일명 & 타이밍 & 다운로드 */}
+                    <div className="p-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs truncate" style={{ color: 'var(--foreground-muted)' }}>
+                          {img.fileName}
+                        </span>
+                        {img.status === 'completed' && (
+                          <button
+                            onClick={() => handleDownload(img)}
+                            className="p-1 rounded hover:bg-[var(--accent-light)] transition-colors"
+                          >
+                            <svg className="w-4 h-4" style={{ color: 'var(--foreground-muted)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                      {/* 타이밍 정보 표시 */}
+                      {img.timings && img.timings.length > 0 && (
+                        <div className="mt-1 text-[10px] space-y-0.5" style={{ color: 'var(--foreground-muted)', opacity: 0.7 }}>
+                          {img.timings.map((t, idx) => (
+                            <div key={idx} className="flex justify-between">
+                              <span>{t.step}</span>
+                              <span className="font-mono">{(t.duration / 1000).toFixed(1)}s</span>
+                            </div>
+                          ))}
+                          <div className="flex justify-between pt-0.5 border-t" style={{ borderColor: 'var(--border)' }}>
+                            <span>총</span>
+                            <span className="font-mono">{(img.timings.reduce((sum, t) => sum + t.duration, 0) / 1000).toFixed(1)}s</span>
+                          </div>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -604,6 +780,79 @@ export default function ProductRetouching() {
           )}
         </div>
       </div>
+
+      {/* 이미지 미리보기 모달 */}
+      {previewImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.9)' }}
+          onClick={() => setPreviewImage(null)}
+        >
+          {/* 닫기 버튼 */}
+          <button
+            className="absolute top-4 right-4 p-2 rounded-full hover:bg-white/10 transition-colors"
+            onClick={() => setPreviewImage(null)}
+          >
+            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+
+          {/* 줌 컨트롤 */}
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-black/50 rounded-full px-4 py-2">
+            <button
+              className="p-1 hover:bg-white/10 rounded transition-colors text-white"
+              onClick={(e) => {
+                e.stopPropagation();
+                setPreviewZoom(z => Math.max(0.25, z - 0.25));
+              }}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+              </svg>
+            </button>
+            <span className="text-white text-sm min-w-[60px] text-center">{Math.round(previewZoom * 100)}%</span>
+            <button
+              className="p-1 hover:bg-white/10 rounded transition-colors text-white"
+              onClick={(e) => {
+                e.stopPropagation();
+                setPreviewZoom(z => Math.min(4, z + 0.25));
+              }}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
+            <button
+              className="p-1 hover:bg-white/10 rounded transition-colors text-white ml-2"
+              onClick={(e) => {
+                e.stopPropagation();
+                setPreviewZoom(1);
+              }}
+            >
+              <span className="text-xs">100%</span>
+            </button>
+          </div>
+
+          {/* 이미지 제목 */}
+          <div className="absolute top-4 left-4 text-white text-sm bg-black/50 px-3 py-1 rounded">
+            {previewImage.title}
+          </div>
+
+          {/* 이미지 */}
+          <div
+            className="max-w-[90vw] max-h-[85vh] overflow-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={previewImage.url}
+              alt={previewImage.title}
+              className="transition-transform duration-200"
+              style={{ transform: `scale(${previewZoom})`, transformOrigin: 'center center' }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
