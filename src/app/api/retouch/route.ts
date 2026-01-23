@@ -384,18 +384,17 @@ export async function POST(request: NextRequest) {
           "zsxkib/ic-light:8cc07fa3a5a8f64595bc0014a26b376e046d40c86f86c32b1b67ce73ece7067c",
           {
             input: {
-              prompt: "professional studio product photography, clean solid white background, soft top-down lighting, natural soft ambient shadow on white floor, minimalist aesthetic, high resolution, commercial quality, e-commerce photo",
+              // 필수 파라미터
               subject_image: processedImageUrl,
+              prompt: "professional studio product photography, clean solid white background, soft top-down lighting, natural soft ambient shadow on white floor, minimalist aesthetic, high resolution, commercial quality, e-commerce photo, best quality",
+              // 올바른 선택 파라미터만 사용
               light_source: "Top Light", // 위에서 아래로 조명 → 자연스러운 바닥 그림자
               negative_prompt: "dark, moody, dramatic, colored background, harsh shadows, multiple shadows, busy background, cluttered, low quality",
-              cfg: 2.5, // 낮은 값 = 더 자연스러운 결과
+              cfg: 2, // 기본값 사용 (더 자연스러운 결과)
               steps: 25,
-              lowres_denoise: 0.95, // 배경 생성 강도 높게
-              highres_denoise: 0.5, // 제품 디테일 유지
-              highres_scale: 1.5,
+              width: 768, // 원본 비율 유지를 위해 더 큰 크기
+              height: 1024, // 2:3 비율 (의류 이미지에 적합)
               output_format: "png",
-              output_quality: 95,
-              appended_prompt: "best quality, high resolution, sharp focus on fabric texture",
             }
           }
         );
