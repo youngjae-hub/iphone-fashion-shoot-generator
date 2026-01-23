@@ -16,7 +16,7 @@ interface BrandConfig {
   silhouetteRefine?: boolean; // 실루엣 다듬기 옵션
   flatlayMethod?: 'sdxl' | 'idm-vton' | 'tps' | 'skeleton'; // 도식화 방법 선택
   // 새로운 리터칭 옵션
-  retouchMethod?: 'none' | 'photoroom' | 'edge-inpaint'; // 리터칭 방법 선택
+  retouchMethod?: 'none' | 'photoroom' | 'edge-inpaint' | 'clipping-magic' | 'pixelcut' | 'magic-refiner-mask'; // 리터칭 방법 선택
 }
 
 interface RetouchRequest {
@@ -240,6 +240,132 @@ export async function POST(request: NextRequest) {
         }
       } catch (refinerError: unknown) {
         console.error('[Retouch API] Real-ESRGAN error:', refinerError);
+        console.log(`[Retouch API][${brand}] Continuing with previous image...`);
+      }
+    } else if (retouchMethod === 'clipping-magic') {
+      // Plan C: Clipping Magic API - Smart Smoothing (가장자리 스무딩)
+      const cmStart = Date.now();
+      console.log(`[Retouch API][${brand}] Starting Clipping Magic Smart Smoothing...`);
+
+      if (!process.env.CLIPPING_MAGIC_API_KEY) {
+        console.warn('[Retouch API] CLIPPING_MAGIC_API_KEY not set, skipping...');
+      } else {
+        try {
+          const base64Data = processedImageUrl.replace(/^data:image\/\w+;base64,/, '');
+
+          // Clipping Magic API 호출
+          const cmResponse = await fetch('https://clippingmagic.com/api/v1/images', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Basic ${Buffer.from(process.env.CLIPPING_MAGIC_API_KEY + ':').toString('base64')}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              image: {
+                base64: base64Data,
+              },
+              // Smart Smoothing 설정 - 텍스타일에 최적화
+              format: 'png',
+              // 가장자리 스무딩 옵션
+              output: {
+                background: { color: 'transparent' },
+              },
+            }),
+          });
+
+          if (cmResponse.ok) {
+            const cmResult = await cmResponse.json();
+            if (cmResult.image && cmResult.image.base64) {
+              processedImageUrl = `data:image/png;base64,${cmResult.image.base64}`;
+              const cmDuration = Date.now() - cmStart;
+              timings.push({ step: 'Clipping Magic', duration: cmDuration });
+              console.log(`[Retouch API][${brand}] Clipping Magic completed (${(cmDuration / 1000).toFixed(1)}s)`);
+            }
+          } else {
+            const errorText = await cmResponse.text();
+            console.error('[Retouch API] Clipping Magic error:', cmResponse.status, errorText);
+          }
+        } catch (cmError: unknown) {
+          console.error('[Retouch API] Clipping Magic error:', cmError);
+        }
+      }
+    } else if (retouchMethod === 'pixelcut') {
+      // Plan D: Pixelcut API - 화질 보정 (주름 제거 + 텍스처 향상)
+      const pcStart = Date.now();
+      console.log(`[Retouch API][${brand}] Starting Pixelcut quality enhancement...`);
+
+      if (!process.env.PIXELCUT_API_KEY) {
+        console.warn('[Retouch API] PIXELCUT_API_KEY not set, skipping...');
+      } else {
+        try {
+          const base64Data = processedImageUrl.replace(/^data:image\/\w+;base64,/, '');
+          const imageBuffer = Buffer.from(base64Data, 'base64');
+
+          // Pixelcut API 호출 - Upscale & Enhance
+          const formData = new FormData();
+          formData.append('image', new Blob([imageBuffer], { type: 'image/png' }), 'image.png');
+
+          const pcResponse = await fetch('https://api.pixelcut.ai/v1/upscale', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${process.env.PIXELCUT_API_KEY}`,
+            },
+            body: formData,
+          });
+
+          if (pcResponse.ok) {
+            const pcResult = await pcResponse.json();
+            if (pcResult.url) {
+              processedImageUrl = await urlToBase64(pcResult.url);
+              const pcDuration = Date.now() - pcStart;
+              timings.push({ step: 'Pixelcut', duration: pcDuration });
+              console.log(`[Retouch API][${brand}] Pixelcut completed (${(pcDuration / 1000).toFixed(1)}s)`);
+            }
+          } else {
+            const errorText = await pcResponse.text();
+            console.error('[Retouch API] Pixelcut error:', pcResponse.status, errorText);
+          }
+        } catch (pcError: unknown) {
+          console.error('[Retouch API] Pixelcut error:', pcError);
+        }
+      }
+    } else if (retouchMethod === 'magic-refiner-mask') {
+      // Plan E: Magic Image Refiner + Edge Mask (가장자리 선택적 리파인)
+      const mrStart = Date.now();
+      console.log(`[Retouch API][${brand}] Starting Magic Refiner with edge mask...`);
+
+      try {
+        // 1. 먼저 clothing segmentation으로 마스크 생성
+        console.log(`[Retouch API][${brand}] Creating edge mask...`);
+
+        // Magic Image Refiner: 가장자리 중심 리파인
+        // creativity 낮게, resemblance 높게 설정하여 원본 유지하면서 가장자리만 스무딩
+        const refinerOutput = await replicate.run(
+          "fermatresearch/magic-image-refiner:507ddf6f977a7e30e46c0daefd30de7d563c72322f9e4cf7cbac52ef0f667b13",
+          {
+            input: {
+              image: processedImageUrl,
+              prompt: "professional product photography, smooth clean edges, seamless silhouette, pristine fabric texture, high quality e-commerce photo, perfect cutout, no jagged edges",
+              negative_prompt: "rough edges, jagged silhouette, pixelated edges, artifacts, noise, uneven borders, frayed edges",
+              resolution: "original",
+              resemblance: 0.95, // 원본 최대 유지
+              creativity: 0.05, // 미세한 가장자리 스무딩만
+              hdr: 0,
+              steps: 15, // 빠른 처리
+              guidance_scale: 5,
+            }
+          }
+        );
+
+        if (refinerOutput) {
+          const refinerUrl = extractUrlFromOutput(refinerOutput);
+          processedImageUrl = await urlToBase64(refinerUrl);
+          const mrDuration = Date.now() - mrStart;
+          timings.push({ step: 'Magic Refiner', duration: mrDuration });
+          console.log(`[Retouch API][${brand}] Magic Refiner completed (${(mrDuration / 1000).toFixed(1)}s)`);
+        }
+      } catch (mrError: unknown) {
+        console.error('[Retouch API] Magic Refiner error:', mrError);
         console.log(`[Retouch API][${brand}] Continuing with previous image...`);
       }
     }

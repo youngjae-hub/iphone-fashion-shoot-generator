@@ -6,7 +6,7 @@ import { UploadedImage } from '@/types';
 // 도식화 방법 타입
 type FlatlayMethod = 'sdxl' | 'idm-vton' | 'tps' | 'skeleton';
 // 리터칭 방법 타입
-type RetouchMethod = 'none' | 'photoroom' | 'edge-inpaint';
+type RetouchMethod = 'none' | 'photoroom' | 'edge-inpaint' | 'clipping-magic' | 'pixelcut' | 'magic-refiner-mask';
 
 // 브랜드별 설정
 const BRAND_CONFIGS = {
@@ -90,7 +90,7 @@ const BRAND_CONFIGS = {
     retouchMethod: 'photoroom' as RetouchMethod,
   },
   'test-planB': {
-    name: '🧪 Plan B (Edge Inpaint)',
+    name: '🧪 Plan B (Real-ESRGAN)',
     format: 'png' as const,
     nukki: true,
     backgroundColor: '#F8F8F8',
@@ -101,6 +101,45 @@ const BRAND_CONFIGS = {
     silhouetteRefine: false,
     flatlayMethod: 'sdxl' as FlatlayMethod,
     retouchMethod: 'edge-inpaint' as RetouchMethod,
+  },
+  'test-planC': {
+    name: '🧪 Plan C (Clipping Magic)',
+    format: 'png' as const,
+    nukki: true,
+    backgroundColor: '#F8F8F8',
+    shadow: false,
+    cropWidth: 2000,
+    cropHeight: 3000,
+    flatlay: false,
+    silhouetteRefine: false,
+    flatlayMethod: 'sdxl' as FlatlayMethod,
+    retouchMethod: 'clipping-magic' as RetouchMethod,
+  },
+  'test-planD': {
+    name: '🧪 Plan D (Pixelcut)',
+    format: 'png' as const,
+    nukki: true,
+    backgroundColor: '#F8F8F8',
+    shadow: false,
+    cropWidth: 2000,
+    cropHeight: 3000,
+    flatlay: false,
+    silhouetteRefine: false,
+    flatlayMethod: 'sdxl' as FlatlayMethod,
+    retouchMethod: 'pixelcut' as RetouchMethod,
+  },
+  'test-planE': {
+    name: '🧪 Plan E (Magic Refiner)',
+    format: 'png' as const,
+    nukki: true,
+    backgroundColor: '#F8F8F8',
+    shadow: false,
+    cropWidth: 2000,
+    cropHeight: 3000,
+    flatlay: false,
+    silhouetteRefine: false,
+    flatlayMethod: 'sdxl' as FlatlayMethod,
+    retouchMethod: 'magic-refiner-mask' as RetouchMethod,
   },
 } as const;
 
