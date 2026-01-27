@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { GeneratedImage, PoseType, POSE_CONFIGS } from '@/types';
 
 interface ResultGalleryProps {
@@ -123,6 +123,28 @@ export default function ResultGallery({
   };
 
   const uniquePoses = Array.from(new Set(images.map((img) => img.pose)));
+
+  // 풀스크린 모달 키보드 네비게이션
+  const navigateImage = useCallback((direction: 'prev' | 'next') => {
+    if (!selectedImage) return;
+    const currentIndex = filteredImages.findIndex((img) => img.id === selectedImage.id);
+    if (currentIndex === -1) return;
+    const nextIndex = direction === 'next'
+      ? (currentIndex + 1) % filteredImages.length
+      : (currentIndex - 1 + filteredImages.length) % filteredImages.length;
+    setSelectedImage(filteredImages[nextIndex]);
+  }, [selectedImage, filteredImages]);
+
+  useEffect(() => {
+    if (!selectedImage) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight') navigateImage('next');
+      else if (e.key === 'ArrowLeft') navigateImage('prev');
+      else if (e.key === 'Escape') setSelectedImage(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedImage, navigateImage]);
 
   return (
     <div className="space-y-6">
@@ -333,6 +355,35 @@ export default function ResultGallery({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
+
+            {/* 좌우 네비게이션 버튼 */}
+            {filteredImages.length > 1 && (
+              <>
+                <button
+                  onClick={() => navigateImage('prev')}
+                  className="absolute left-[-56px] top-1/2 -translate-y-1/2 p-3 rounded-full bg-black/50 hover:bg-black/70 transition-colors"
+                >
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => navigateImage('next')}
+                  className="absolute right-[-56px] top-1/2 -translate-y-1/2 p-3 rounded-full bg-black/50 hover:bg-black/70 transition-colors"
+                >
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </>
+            )}
+
+            {/* 이미지 카운터 */}
+            {filteredImages.length > 1 && (
+              <div className="absolute top-4 left-4 px-3 py-1.5 rounded-full bg-black/50 backdrop-blur text-white text-sm">
+                {filteredImages.findIndex((img) => img.id === selectedImage.id) + 1} / {filteredImages.length}
+              </div>
+            )}
 
             {/* Image Info */}
             <div className="absolute bottom-4 left-4 right-4 p-4 rounded-lg bg-black/50 backdrop-blur">
