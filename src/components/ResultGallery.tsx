@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { GeneratedImage, PoseType, POSE_CONFIGS } from '@/types';
 
 interface ResultGalleryProps {
@@ -22,6 +22,7 @@ export default function ResultGallery({
 }: ResultGalleryProps) {
   const [selectedPose, setSelectedPose] = useState<PoseType | 'all'>('all');
   const [selectedImage, setSelectedImage] = useState<GeneratedImage | null>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
   const [isDownloadingZip, setIsDownloadingZip] = useState(false);
   const [upscalingIds, setUpscalingIds] = useState<Set<string>>(new Set());
   const [upscaleError, setUpscaleError] = useState<string | null>(null);
@@ -137,14 +138,11 @@ export default function ResultGallery({
 
   useEffect(() => {
     if (!selectedImage) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight') navigateImage('next');
-      else if (e.key === 'ArrowLeft') navigateImage('prev');
-      else if (e.key === 'Escape') setSelectedImage(null);
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedImage, navigateImage]);
+    // 모달이 열리면 포커스를 모달에 설정
+    requestAnimationFrame(() => {
+      modalRef.current?.focus();
+    });
+  }, [selectedImage]);
 
   return (
     <div className="space-y-6">
@@ -338,8 +336,15 @@ export default function ResultGallery({
       {/* Image Modal */}
       {selectedImage && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          ref={modalRef}
+          tabIndex={0}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 outline-none"
           onClick={() => setSelectedImage(null)}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowRight') { e.preventDefault(); navigateImage('next'); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); navigateImage('prev'); }
+            else if (e.key === 'Escape') { setSelectedImage(null); }
+          }}
         >
           <div className="relative max-w-4xl max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
             <img

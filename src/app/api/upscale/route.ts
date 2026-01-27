@@ -69,15 +69,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 결과 처리
+    // 결과 처리 (Replicate SDK v1.x는 FileOutput 객체 반환)
     let upscaledUrl: string | null = null;
+
+    console.log('[Upscale] Output type:', typeof output, 'value:', output);
 
     if (typeof output === 'string') {
       upscaledUrl = output;
+    } else if (output instanceof URL) {
+      upscaledUrl = output.toString();
     } else if (Array.isArray(output) && output.length > 0) {
-      upscaledUrl = output[0];
-    } else if (output && typeof output === 'object' && 'output' in output) {
-      upscaledUrl = (output as { output: string }).output;
+      upscaledUrl = typeof output[0] === 'string' ? output[0] : String(output[0]);
+    } else if (output && typeof output === 'object') {
+      // FileOutput 객체 또는 기타 객체 처리
+      if ('url' in output) {
+        upscaledUrl = String((output as { url: string }).url);
+      } else if ('output' in output) {
+        upscaledUrl = String((output as { output: string }).output);
+      } else if ('href' in output) {
+        upscaledUrl = String((output as { href: string }).href);
+      } else {
+        // toString()으로 URL 추출 시도
+        const str = String(output);
+        if (str.startsWith('http')) {
+          upscaledUrl = str;
+        }
+      }
     }
 
     if (!upscaledUrl) {
