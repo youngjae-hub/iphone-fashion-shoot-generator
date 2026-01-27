@@ -14,9 +14,15 @@ type ImageSourceTab = 'upload' | 'url';
 
 // 이미지 리사이즈 함수 (학습용으로 최적화 - Vercel 4.5MB 제한 대응)
 async function resizeImageForTraining(base64: string, maxSize: number = 768): Promise<string> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
+      // 이미지 크기 검증
+      if (img.width <= 0 || img.height <= 0) {
+        reject(new Error(`Invalid image dimensions: ${img.width}x${img.height}`));
+        return;
+      }
+
       const canvas = document.createElement('canvas');
       let { width, height } = img;
 
@@ -31,15 +37,16 @@ async function resizeImageForTraining(base64: string, maxSize: number = 768): Pr
         }
       }
 
-      canvas.width = Math.round(width);
-      canvas.height = Math.round(height);
+      // 최소 크기 보장
+      canvas.width = Math.max(1, Math.round(width));
+      canvas.height = Math.max(1, Math.round(height));
       const ctx = canvas.getContext('2d');
       ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
 
       // JPEG로 압축 (품질 70%로 더 압축)
       resolve(canvas.toDataURL('image/jpeg', 0.7));
     };
-    img.onerror = () => resolve(base64); // 실패 시 원본 반환
+    img.onerror = () => reject(new Error('Failed to load image for resize'));
     img.src = base64;
   });
 }

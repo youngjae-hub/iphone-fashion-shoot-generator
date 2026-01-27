@@ -67,6 +67,12 @@ export async function cropTopOfImage(imageBase64: string, cropRatio: number = 0.
     img.crossOrigin = 'anonymous';
 
     img.onload = () => {
+      // 이미지 크기 검증
+      if (img.width <= 0 || img.height <= 0) {
+        reject(new Error(`Invalid image dimensions: ${img.width}x${img.height}`));
+        return;
+      }
+
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
 
@@ -75,9 +81,9 @@ export async function cropTopOfImage(imageBase64: string, cropRatio: number = 0.
         return;
       }
 
-      // 크롭 영역 계산
+      // 크롭 영역 계산 (최소 높이 1px 보장)
       const cropY = Math.floor(img.height * cropRatio);
-      const newHeight = img.height - cropY;
+      const newHeight = Math.max(1, img.height - cropY);
 
       canvas.width = img.width;
       canvas.height = newHeight;

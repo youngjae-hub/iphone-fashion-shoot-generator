@@ -449,21 +449,42 @@ export class LoRATrainingService {
     const zip = new JSZip();
 
     console.log(`Processing ${base64Images.length} images for ZIP...`);
+    let addedCount = 0;
 
     for (let i = 0; i < base64Images.length; i++) {
       try {
         const base64 = base64Images[i];
+
+        // base64 데이터 유효성 검증
+        if (!base64 || typeof base64 !== 'string') {
+          console.warn(`Image ${i}: invalid base64 data (empty or not string), skipping`);
+          continue;
+        }
+
         // base64에서 실제 데이터 추출
         const base64Data = base64.replace(/^data:image\/\w+;base64,/, '');
         const buffer = Buffer.from(base64Data, 'base64');
 
+        // 최소 크기 검증 (유효한 JPEG/PNG는 최소 수백 바이트)
+        if (buffer.length < 100) {
+          console.warn(`Image ${i}: buffer too small (${buffer.length} bytes), skipping`);
+          continue;
+        }
+
         // 파일명: image_001.jpg, image_002.jpg, ...
-        const filename = `image_${String(i + 1).padStart(3, '0')}.jpg`;
+        const filename = `image_${String(addedCount + 1).padStart(3, '0')}.jpg`;
         zip.file(filename, buffer);
+        addedCount++;
       } catch (error) {
         console.error(`Failed to add image ${i} to ZIP:`, error);
       }
     }
+
+    if (addedCount === 0) {
+      throw new Error('유효한 이미지가 없습니다. 이미지를 다시 업로드해주세요.');
+    }
+
+    console.log(`${addedCount}/${base64Images.length} images added to ZIP`);
 
     // ZIP 파일 생성 (압축 레벨 낮춤 - 속도 향상)
     console.log('Generating ZIP file...');
