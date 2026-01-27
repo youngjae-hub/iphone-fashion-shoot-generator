@@ -21,18 +21,57 @@ const getReplicateClient = () => {
   return new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
 };
 
-// Helper function to extract string from Replicate output
-function extractOutputString(output: unknown): string {
+// Helper function to extract URL string from Replicate output
+// Replicate SDK v1.x returns FileOutput (ReadableStream subclass) instead of plain strings
+function extractOutputUrl(output: unknown): string {
+  // 1. Plain string
   if (typeof output === 'string') {
     return output;
   }
+
+  // 2. URL object
+  if (output instanceof URL) {
+    return output.href;
+  }
+
+  // 3. Array of outputs (some models return arrays)
   if (Array.isArray(output) && output.length > 0) {
-    return String(output[0]);
+    return extractOutputUrl(output[0]); // Recursively extract from first element
   }
+
+  // 4. Object (FileOutput or other)
   if (output && typeof output === 'object') {
-    return String(output);
+    const obj = output as Record<string, unknown>;
+
+    // 4a. FileOutput has a .url getter that returns a URL object
+    try {
+      if ('url' in obj) {
+        const urlVal = obj.url;
+        if (urlVal instanceof URL) return urlVal.href;
+        if (typeof urlVal === 'string' && urlVal.startsWith('http')) return urlVal;
+      }
+    } catch {
+      // url property access can fail in some edge cases
+    }
+
+    // 4b. Check href property
+    if ('href' in obj && typeof obj.href === 'string') {
+      return obj.href;
+    }
+
+    // 4c. toString() fallback - FileOutput.toString() should return URL
+    const str = String(output);
+    if (str.startsWith('http')) {
+      return str;
+    }
+
+    // 4d. If toString() returned [object ...], it's not useful
+    if (!str.startsWith('[object')) {
+      return str;
+    }
   }
-  throw new Error('Unexpected output format from Replicate');
+
+  throw new Error(`Unexpected Replicate output format: ${typeof output} / ${output?.constructor?.name || 'unknown'}`);
 }
 
 // ============================================
@@ -64,7 +103,7 @@ export class FluxImageProvider implements IImageGenerationProvider {
       }
     );
 
-    return extractOutputString(output);
+    return extractOutputUrl(output);
   }
 
   async generateBackground(options: BackgroundOptions): Promise<string> {
@@ -90,7 +129,7 @@ export class FluxImageProvider implements IImageGenerationProvider {
       }
     );
 
-    return extractOutputString(output);
+    return extractOutputUrl(output);
   }
 
   async isAvailable(): Promise<boolean> {
@@ -129,7 +168,7 @@ export class IDMVTONProvider implements ITryOnProvider {
       }
     );
 
-    return extractOutputString(output);
+    return extractOutputUrl(output);
   }
 
   async isAvailable(): Promise<boolean> {
@@ -162,7 +201,7 @@ export class KolorsVTONProvider implements ITryOnProvider {
       }
     );
 
-    return extractOutputString(output);
+    return extractOutputUrl(output);
   }
 
   async isAvailable(): Promise<boolean> {
@@ -201,7 +240,7 @@ export class StableDiffusionProvider implements IImageGenerationProvider {
       }
     );
 
-    return extractOutputString(output);
+    return extractOutputUrl(output);
   }
 
   async generateBackground(options: BackgroundOptions): Promise<string> {
@@ -225,7 +264,7 @@ export class StableDiffusionProvider implements IImageGenerationProvider {
       }
     );
 
-    return extractOutputString(output);
+    return extractOutputUrl(output);
   }
 
   async isAvailable(): Promise<boolean> {

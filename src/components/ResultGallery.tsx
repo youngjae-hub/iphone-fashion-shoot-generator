@@ -35,6 +35,7 @@ export default function ResultGallery({
     setUpscaleError(null);
 
     try {
+      console.log('[Upscale] Requesting upscale for:', image.url?.substring(0, 80));
       const response = await fetch('/api/upscale', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -44,6 +45,20 @@ export default function ResultGallery({
           model: 'real-esrgan',
         }),
       });
+
+      if (!response.ok) {
+        // HTTP 에러 (413, 500 등)
+        let errorMsg = `HTTP ${response.status}`;
+        try {
+          const errData = await response.json();
+          errorMsg = errData.error || errorMsg;
+        } catch {
+          errorMsg = `${errorMsg}: ${response.statusText}`;
+        }
+        console.error(`[Upscale] Server error: ${errorMsg}`);
+        setUpscaleError(`업스케일 실패 (${errorMsg})`);
+        return;
+      }
 
       const data = await response.json();
 
@@ -65,8 +80,8 @@ export default function ResultGallery({
         setUpscaleError(data.error || '업스케일 실패');
       }
     } catch (err) {
-      console.error('Upscale error:', err);
-      setUpscaleError('업스케일 중 오류가 발생했습니다.');
+      console.error('[Upscale] Network error:', err);
+      setUpscaleError('업스케일 요청 실패 - 네트워크 오류');
     } finally {
       setUpscalingIds(prev => {
         const next = new Set(prev);
