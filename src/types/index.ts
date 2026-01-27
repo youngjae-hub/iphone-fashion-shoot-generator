@@ -270,7 +270,7 @@ export const DEFAULT_PROMPT_TEMPLATES: PromptTemplate[] = [
     name: '아이폰 자연광',
     description: '자연스러운 아이폰 촬영 느낌',
     category: 'style',
-    basePrompt: 'iPhone photo, natural lighting, soft shadows, authentic candid moment, slight grain, warm tones',
+    basePrompt: 'iPhone photo, natural lighting, soft shadows, authentic candid moment, slight grain, neutral natural tones',
     negativePrompt: 'studio lighting, flash, artificial, overly edited, HDR, oversaturated',
     isDefault: true,
   },

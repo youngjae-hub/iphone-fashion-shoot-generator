@@ -12,12 +12,12 @@ import {
 function generateAblelyStylePrompt(pose: string, garmentDescription?: string): string {
   const stylePrompt = `
     Korean online shopping mall style photography,
-    iPhone camera quality, slightly overexposed natural daylight,
-    casual everyday background (simple room, cafe corner, or plain wall),
+    iPhone camera quality, natural daylight,
+    clean simple background (plain wall or neutral backdrop),
     young Korean female model in her early 20s,
     face cropped above lips showing only chin and lips,
     relaxed natural pose like friend took the photo,
-    soft warm color grading, slight lens flare,
+    natural color grading, realistic skin tones,
     not too perfect - authentic social media aesthetic,
     WIDE SHOT with generous framing - shot from distance,
     full body shot with plenty of space around the model,
@@ -83,8 +83,8 @@ The first ${styleRefCount} image(s) show the EXACT photography style you must re
 - Blend the best elements from all reference images
 ` : `STYLE REQUIREMENTS:
 - iPhone camera quality, natural daylight from window
-- Slightly overexposed warm tones, soft color grading
-${hasBackgroundSpot ? '' : '- Casual everyday background: simple room corner with plant, plain cream wall, or cozy cafe corner'}
+- Natural color grading, realistic skin tones, no color cast
+${hasBackgroundSpot ? '' : '- Clean simple background: plain wall, neutral backdrop, or minimal setting'}
 - Authentic social media aesthetic, not too perfect
 - Add slight motion blur or soft focus for realism
 - Include natural shadows and lighting inconsistencies
@@ -208,9 +208,9 @@ Make it look like a real photo taken by a friend, not AI-generated.`
 
   async generateBackground(options: BackgroundOptions): Promise<string> {
     const prompt = options.prompt || `
-      simple Korean room corner background,
+      simple clean background,
       natural daylight from window,
-      minimalist aesthetic, warm tones,
+      minimalist aesthetic, neutral tones,
       online shopping mall photo backdrop style
     `.trim();
 
