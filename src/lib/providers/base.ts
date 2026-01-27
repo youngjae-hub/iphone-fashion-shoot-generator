@@ -85,11 +85,11 @@ export function generateIPhoneStylePrompt(pose: PoseType, additionalPrompt?: str
   `.trim().replace(/\s+/g, ' ');
 
   const posePrompts: Record<PoseType, string> = {
-    front: 'wide full body shot from head to feet, standing casually facing camera, weight on one leg, relaxed natural stance, generous framing with space around model, full head and body visible in frame',
-    side: 'wide full body shot from head to feet, side profile angle, looking away naturally, candid walking moment, generous framing with environment visible, entire body in frame',
-    back: 'wide full body shot from head to feet, back view, slightly looking over shoulder, showing outfit back details, shot from distance with full body visible',
-    styled: 'wide shot lifestyle pose from head to feet, sitting on chair or adjusting clothes or hand in pocket or touching hair, full body with surroundings visible, natural relaxed editorial feel',
-    detail: '3/4 body shot with comfortable framing, focusing on outfit details, fabric texture, accessories, upper body and face visible',
+    front: 'medium close-up shot from chest to knees, standing casually facing camera, weight on one leg, face naturally cut off at forehead by tight framing, chin and lips visible but eyes out of frame, fashion lookbook cropping style',
+    side: 'full body shot from head to feet, side profile angle, looking away naturally, candid walking moment, generous framing with environment visible, entire body in frame',
+    back: 'full body shot from head to feet, back view, slightly looking over shoulder, showing outfit back details, shot from distance with full body visible',
+    styled: 'medium shot from neck to knees, sitting on chair or adjusting clothes or hand in pocket, face naturally cropped at nose level by tight framing, lower face and chin visible, relaxed editorial feel with natural movement',
+    detail: '3/4 body shot with comfortable framing, focusing on outfit details, fabric texture, accessories, upper body cropped at chin level',
   };
 
   return `${basePrompt}, ${posePrompts[pose]}${additionalPrompt ? `, ${additionalPrompt}` : ''}`;
@@ -100,6 +100,5 @@ export const DEFAULT_NEGATIVE_PROMPT = `
   low quality, blurry, distorted, deformed, ugly,
   bad anatomy, bad proportions, extra limbs,
   watermark, signature, text, logo,
-  cropped head, cut off head, head out of frame, feet cut off,
   oversaturated, artificial lighting
 `.trim().replace(/\s+/g, ' ');
