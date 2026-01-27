@@ -167,13 +167,13 @@ export default function Home() {
   const saveToHistory = async (images: GeneratedImage[]) => {
     try {
       if (!currentSessionId) {
-        // 새 세션 생성
+        // 새 세션 생성 (base64 이미지는 전송하지 않음 - Vercel 4.5MB 제한으로 413 방지)
         const createRes = await fetch('/api/history', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: 'create',
-            garmentImages: uploadedImages.map(img => img.preview),
+            garmentImages: [],
             settings,
             providers: providerConfig,
             loraModelId: activeLoRA?.id,
