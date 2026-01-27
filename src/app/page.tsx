@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useSession, signOut } from 'next-auth/react';
+// Auth disabled for development
+// import { useSession, signOut } from 'next-auth/react';
 import {
   ImageUploader,
   ProviderSelector,
@@ -11,6 +12,7 @@ import {
   History,
   PromptEditor,
   ProductRetouching,
+  ModelShotGenerator,
 } from '@/components';
 import {
   UploadedImage,
@@ -27,8 +29,6 @@ import {
 } from '@/types';
 
 export default function Home() {
-  const { data: session } = useSession();
-
   // State
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
@@ -41,7 +41,7 @@ export default function Home() {
     tryOn: Record<string, boolean>;
   } | undefined>();
   const [activeTab, setActiveTab] = useState<'upload' | 'settings' | 'prompt' | 'provider' | 'training' | 'history'>('upload');
-  const [mainTab, setMainTab] = useState<'model-cut' | 'product-retouch'>('model-cut');
+  const [mainTab, setMainTab] = useState<'model-cut' | 'ai-model-shot' | 'product-retouch'>('model-cut');
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [styleReferenceImages, setStyleReferenceImages] = useState<UploadedImage[]>([]);
   const [backgroundSpotImages, setBackgroundSpotImages] = useState<UploadedImage[]>([]);
@@ -302,32 +302,7 @@ export default function Home() {
               </span>
             </div>
 
-            {/* User Menu */}
-            {session?.user && (
-              <div className="flex items-center gap-2">
-                <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full" style={{ background: 'var(--background-tertiary)', border: '1px solid var(--border)' }}>
-                  {session.user.image ? (
-                    <img src={session.user.image} alt="" className="w-5 h-5 rounded-full" />
-                  ) : (
-                    <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-medium" style={{ background: 'var(--border)' }}>
-                      {session.user.name?.[0] || session.user.email?.[0] || '?'}
-                    </span>
-                  )}
-                  <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
-                    {session.user.email?.split('@')[0]}
-                  </span>
-                </div>
-                <button
-                  onClick={() => signOut()}
-                  className="p-2 rounded-md transition-colors hover:bg-[var(--accent-light)]"
-                  title="Sign out"
-                >
-                  <svg className="w-4 h-4" style={{ color: 'var(--foreground-muted)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                  </svg>
-                </button>
-              </div>
-            )}
+            {/* User Menu - Disabled for development */}
           </div>
         </div>
       </header>
@@ -346,6 +321,16 @@ export default function Home() {
             아이폰 모델컷
           </button>
           <button
+            onClick={() => setMainTab('ai-model-shot')}
+            className={`py-3 px-5 text-sm font-medium border-b-2 transition-all ${
+              mainTab === 'ai-model-shot'
+                ? 'border-[var(--foreground)] text-[var(--foreground)]'
+                : 'border-transparent text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
+            }`}
+          >
+            AI 모델컷
+          </button>
+          <button
             onClick={() => setMainTab('product-retouch')}
             className={`py-3 px-5 text-sm font-medium border-b-2 transition-all ${
               mainTab === 'product-retouch'
@@ -362,6 +347,8 @@ export default function Home() {
       <main className="flex-1 flex overflow-hidden">
         {mainTab === 'product-retouch' ? (
           <ProductRetouching />
+        ) : mainTab === 'ai-model-shot' ? (
+          <ModelShotGenerator />
         ) : (
           <>
         {/* Sidebar */}
@@ -412,6 +399,8 @@ export default function Home() {
               <GenerationSettings
                 settings={settings}
                 onChange={setSettings}
+                activeLoRA={activeLoRA}
+                onLoRAChange={setActiveLoRA}
               />
             )}
 

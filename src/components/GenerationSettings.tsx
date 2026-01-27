@@ -1,12 +1,15 @@
 'use client';
 
-import type { GenerationSettings as GenerationSettingsType, PoseType } from '@/types';
+import { useState, useEffect } from 'react';
+import type { GenerationSettings as GenerationSettingsType, PoseType, LoRAModel } from '@/types';
 import { POSE_CONFIGS } from '@/types';
 import HelpTooltip from './HelpTooltip';
 
 interface GenerationSettingsProps {
   settings: GenerationSettingsType;
   onChange: (settings: GenerationSettingsType) => void;
+  activeLoRA?: LoRAModel | null;
+  onLoRAChange?: (model: LoRAModel | null) => void;
 }
 
 const MODEL_STYLES = [
@@ -26,7 +29,31 @@ const BACKGROUND_STYLES = [
 export default function GenerationSettings({
   settings,
   onChange,
+  activeLoRA,
+  onLoRAChange,
 }: GenerationSettingsProps) {
+  const [loraModels, setLoraModels] = useState<LoRAModel[]>([]);
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
+
+  // LoRA 모델 목록 로드
+  useEffect(() => {
+    async function fetchModels() {
+      setIsLoadingModels(true);
+      try {
+        const res = await fetch('/api/lora');
+        const data = await res.json();
+        if (data.success && data.models) {
+          setLoraModels(data.models.filter((m: LoRAModel) => m.status === 'completed'));
+        }
+      } catch (err) {
+        console.error('Failed to fetch LoRA models:', err);
+      } finally {
+        setIsLoadingModels(false);
+      }
+    }
+    fetchModels();
+  }, []);
+
   const togglePose = (pose: PoseType) => {
     const poses = settings.poses.includes(pose)
       ? settings.poses.filter((p) => p !== pose)
@@ -59,6 +86,92 @@ export default function GenerationSettings({
         </svg>
         <h3 className="font-semibold">생성 설정</h3>
       </div>
+
+      {/* LoRA Model Selector */}
+      {onLoRAChange && (
+        <div className="settings-group">
+          <label className="settings-label flex items-center gap-2">
+            학습된 스타일 모델
+            <HelpTooltip title="학습된 스타일 모델이란?">
+              <p className="mb-2">LoRA 학습을 통해 만든 커스텀 스타일 모델을 선택합니다.</p>
+              <ul className="list-disc list-inside space-y-1">
+                <li><strong>기본(없음):</strong> 일반 AI 모델로 생성</li>
+                <li><strong>학습 모델:</strong> 특정 스타일이 반영된 결과물 생성</li>
+              </ul>
+              <p className="mt-2 text-[11px]">Train 탭에서 새 스타일을 학습할 수 있습니다.</p>
+            </HelpTooltip>
+          </label>
+
+          {isLoadingModels ? (
+            <div className="flex items-center gap-2 p-3 rounded-lg" style={{ background: 'var(--background-tertiary)' }}>
+              <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.3" />
+                <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+              </svg>
+              <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>모델 목록 로딩 중...</span>
+            </div>
+          ) : loraModels.length === 0 ? (
+            <div className="p-3 rounded-lg text-xs" style={{ background: 'var(--background-tertiary)', color: 'var(--foreground-muted)' }}>
+              학습된 모델이 없습니다. Train 탭에서 스타일을 학습해보세요.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {/* 기본 모델 (LoRA 없음) */}
+              <button
+                onClick={() => onLoRAChange(null)}
+                className="w-full text-left p-3 rounded-lg border transition-all"
+                style={{
+                  borderColor: !activeLoRA ? 'var(--accent)' : 'var(--border)',
+                  background: !activeLoRA ? 'rgba(99, 102, 241, 0.1)' : 'var(--background-secondary)',
+                }}
+              >
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-3 h-3 rounded-full border-2"
+                    style={{
+                      borderColor: !activeLoRA ? 'var(--accent)' : 'var(--border)',
+                      background: !activeLoRA ? 'var(--accent)' : 'transparent',
+                    }}
+                  />
+                  <span className="text-sm font-medium">기본 모델</span>
+                </div>
+                <p className="text-xs mt-1 ml-5" style={{ color: 'var(--foreground-muted)' }}>
+                  LoRA 없이 기본 AI 모델로 생성
+                </p>
+              </button>
+
+              {/* 학습된 LoRA 모델 목록 */}
+              {loraModels.map((model) => (
+                <button
+                  key={model.id}
+                  onClick={() => onLoRAChange(model)}
+                  className="w-full text-left p-3 rounded-lg border transition-all"
+                  style={{
+                    borderColor: activeLoRA?.id === model.id ? 'var(--accent)' : 'var(--border)',
+                    background: activeLoRA?.id === model.id ? 'rgba(99, 102, 241, 0.1)' : 'var(--background-secondary)',
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-3 h-3 rounded-full border-2"
+                      style={{
+                        borderColor: activeLoRA?.id === model.id ? 'var(--accent)' : 'var(--border)',
+                        background: activeLoRA?.id === model.id ? 'var(--accent)' : 'transparent',
+                      }}
+                    />
+                    <span className="text-sm font-medium">{model.name}</span>
+                  </div>
+                  <div className="ml-5 mt-1">
+                    <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                      트리거: <code className="px-1 rounded" style={{ background: 'var(--background-tertiary)' }}>{model.triggerWord}</code>
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Model Style */}
       <div className="settings-group">

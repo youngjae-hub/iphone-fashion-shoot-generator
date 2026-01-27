@@ -40,8 +40,9 @@ export async function POST(request: NextRequest) {
     // 기본 프롬프트 생성
     const defaultPrompt = `
       Korean online shopping mall style fashion photo,
-      young Korean female model, face cropped above lips,
-      natural iPhone photography, casual everyday background
+      young Korean female model, full body visible from head to feet,
+      natural iPhone photography, casual everyday background,
+      wide shot with generous framing
     `.trim().replace(/\s+/g, ' ');
 
     const finalPrompt = prompt || defaultPrompt;

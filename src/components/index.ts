@@ -6,3 +6,4 @@ export { default as LoRATraining } from './LoRATraining';
 export { default as History } from './History';
 export { default as PromptEditor } from './PromptEditor';
 export { default as ProductRetouching } from './ProductRetouching';
+export { default as ModelShotGenerator } from './ModelShotGenerator';

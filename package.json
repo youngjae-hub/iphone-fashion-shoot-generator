@@ -6,9 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "pikes:batch": "npx tsx scripts/pikes-batch.ts",
+    "pikes:help": "npx tsx scripts/pikes-batch.ts --help"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.3",
     "@vercel/kv": "^3.0.0",
     "jszip": "^3.10.1",
     "next": "16.1.2",

@@ -6,7 +6,7 @@ import { UploadedImage } from '@/types';
 // 도식화 방법 타입
 type FlatlayMethod = 'sdxl' | 'idm-vton' | 'tps' | 'skeleton';
 // 리터칭 방법 타입
-type RetouchMethod = 'none' | 'photoroom' | 'edge-inpaint' | 'clipping-magic' | 'pixelcut' | 'magic-refiner-mask' | 'ai-studio';
+type RetouchMethod = 'none' | 'photoroom' | 'edge-inpaint' | 'clipping-magic' | 'pixelcut' | 'magic-refiner-mask' | 'ai-studio' | 'pikes';
 
 // 브랜드별 설정
 const BRAND_CONFIGS = {
@@ -153,6 +153,33 @@ const BRAND_CONFIGS = {
     silhouetteRefine: false,
     flatlayMethod: 'sdxl' as FlatlayMethod,
     retouchMethod: 'ai-studio' as RetouchMethod,
+  },
+  'test-pikes': {
+    name: '⭐ Pikes AI (Best Quality)',
+    format: 'png' as const,
+    nukki: false, // Pikes가 자체적으로 배경 처리
+    backgroundColor: '#FFFFFF',
+    shadow: false, // Pikes가 자연스러운 그림자 생성
+    cropWidth: 2000,
+    cropHeight: 3000,
+    flatlay: false,
+    silhouetteRefine: false,
+    flatlayMethod: 'sdxl' as FlatlayMethod,
+    retouchMethod: 'pikes' as RetouchMethod,
+  },
+  'test-pikes-remix': {
+    name: '⭐ Pikes Remix (모델 합성)',
+    format: 'png' as const,
+    nukki: false,
+    backgroundColor: null,
+    shadow: false,
+    cropWidth: 2000,
+    cropHeight: 3000,
+    flatlay: false,
+    silhouetteRefine: false,
+    flatlayMethod: 'sdxl' as FlatlayMethod,
+    retouchMethod: 'pikes' as RetouchMethod,
+    // 추가 설정: pikesAction = 'remix'
   },
 } as const;
 
@@ -436,7 +463,41 @@ export default function ProductRetouching() {
         // 파일을 리사이즈된 base64로 변환
         const base64Image = await fileToResizedBase64(image.file);
 
-        // API 호출
+        // Pikes AI인 경우 별도 API 호출
+        if (brandConfig.retouchMethod === 'pikes') {
+          console.log(`[Pikes] Sending request for ${image.file.name}...`);
+          const pikesResponse = await fetch('/api/pikes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: activeBrand === 'test-pikes-remix' ? 'remix' : 'edit',
+              imageData: base64Image,
+              prompt: '스튜디오 품질의 깔끔한 제품 사진. 순수 흰색 배경, 부드러운 전문 조명, 선명한 제품 디테일, 자연스러운 그림자',
+              resolution: '2K',
+              aspectRatio: '3:4',
+            }),
+          });
+
+          const pikesData = await pikesResponse.json();
+          console.log(`[Pikes] Response:`, pikesData);
+
+          if (pikesData.success && pikesData.data?.imageUrl) {
+            processedImage.processedUrl = pikesData.data.imageUrl;
+            processedImage.status = 'completed';
+            processedImage.timings = [{ step: 'Pikes AI', duration: 0 }];
+          } else if (pikesData.hint) {
+            // MCP 직접 사용 안내
+            processedImage.status = 'error';
+            processedImage.error = `${pikesData.hint}\n\nClaude Code에서 직접 실행:\n"이 이미지를 Pikes AI로 리터칭해줘"`;
+          } else {
+            processedImage.status = 'error';
+            processedImage.error = pikesData.error || 'Pikes AI 처리 실패';
+          }
+          setProcessedImages([...results]);
+          continue;
+        }
+
+        // 기존 API 호출
         console.log(`[Retouch] Sending request for ${image.file.name}...`);
         const response = await fetch('/api/retouch', {
           method: 'POST',
