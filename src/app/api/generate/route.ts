@@ -15,6 +15,7 @@ import {
   DEFAULT_PROMPT_TEMPLATES,
   STYLE_MODIFIERS,
 } from '@/types';
+import { logGenerationBatch, type GenerationLogEntry } from '@/lib/notion';
 
 // Vercel Serverless Function 설정
 // Hobby 플랜: 최대 60초, Pro 플랜: 최대 300초
@@ -182,6 +183,28 @@ export async function POST(request: NextRequest) {
         { success: false, error: '이미지 생성에 실패했습니다. API 설정을 확인해주세요.' },
         { status: 500 }
       );
+    }
+
+    // Notion 로깅 (비동기 - 응답을 지연시키지 않음)
+    if (process.env.NOTION_API_KEY && process.env.NOTION_DATABASE_ID) {
+      const logEntries: GenerationLogEntry[] = generatedImages.map(img => ({
+        title: `${img.pose} - ${providers.imageGeneration}`,
+        provider: providers.imageGeneration,
+        modelName: tryOnAvailable ? `${providers.imageGeneration} + ${providers.tryOn}` : providers.imageGeneration,
+        pose: img.pose,
+        prompt: basePrompt || undefined,
+        customPrompt: promptSettings?.useCustomPrompt ? promptSettings.basePrompt : undefined,
+        hasStyleReference: !!(styleReferenceImages && styleReferenceImages.length > 0),
+        hasBackgroundSpot: !!(backgroundSpotImages && backgroundSpotImages.length > 0),
+        success: true,
+        resultImageUrl: img.url.startsWith('http') ? img.url : undefined,
+        styleReferenceInfo: styleReferenceImages?.length ? `${styleReferenceImages.length}장 사용` : undefined,
+        backgroundSpotInfo: backgroundSpotImages?.length ? `${backgroundSpotImages.length}장 사용` : undefined,
+      }));
+
+      logGenerationBatch(logEntries).catch(err => {
+        console.warn('[Notion Log] 비동기 로깅 실패 (무시):', err);
+      });
     }
 
     return NextResponse.json({
