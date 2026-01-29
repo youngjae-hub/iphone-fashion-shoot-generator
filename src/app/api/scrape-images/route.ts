@@ -180,31 +180,22 @@ async function scrapeCommerceImages(url: string, sourceType: SourceType): Promis
       return [];
     }
 
-    // 2단계: 모델착용컷 필터링 (병렬 처리)
-    // Gemini Vision 필터링은 선택적으로 적용 (API 키가 있고, 이미지가 많을 때만)
-    const shouldFilter = process.env.GOOGLE_CLOUD_API_KEY && downloadedImages.length > 3;
+    // Gemini Vision 필터링 임시 비활성화 (안정성 우선)
+    console.log(`[Scrape] Gemini Vision 필터링 비활성화 - 모든 이미지 반환`);
+    return downloadedImages;
 
-    if (!shouldFilter) {
-      console.log(`[Scrape] Gemini Vision 필터링 건너뜀 (API 키 없음 또는 이미지 ${downloadedImages.length}개)`);
-      return downloadedImages;
-    }
-
-    const filterPromises = downloadedImages.map(async (dataUrl, index) => {
-      const isModelWearing = await detectModelWearing(dataUrl);
-      console.log(`[Scrape] 이미지 ${index + 1}/${downloadedImages.length}: ${isModelWearing ? 'PASS' : 'SKIP'}`);
-      return isModelWearing ? dataUrl : null;
-    });
-
-    const filteredImages = (await Promise.all(filterPromises)).filter((img): img is string => img !== null);
-    console.log(`[Scrape] ${filteredImages.length}/${downloadedImages.length}개 모델착용컷 필터링 완료`);
-
-    // 필터링 후 이미지가 너무 적으면 원본 반환
-    if (filteredImages.length === 0 && downloadedImages.length > 0) {
-      console.warn(`[Scrape] 필터링 결과 0개 - 원본 ${downloadedImages.length}개 반환`);
-      return downloadedImages;
-    }
-
-    return filteredImages;
+    // TODO: Gemini Vision 필터링 재활성화
+    // const shouldFilter = process.env.GOOGLE_CLOUD_API_KEY && downloadedImages.length > 3;
+    // if (!shouldFilter) {
+    //   return downloadedImages;
+    // }
+    // const filterPromises = downloadedImages.map(async (dataUrl, index) => {
+    //   const isModelWearing = await detectModelWearing(dataUrl);
+    //   console.log(`[Scrape] 이미지 ${index + 1}/${downloadedImages.length}: ${isModelWearing ? 'PASS' : 'SKIP'}`);
+    //   return isModelWearing ? dataUrl : null;
+    // });
+    // const filteredImages = (await Promise.all(filterPromises)).filter((img): img is string => img !== null);
+    // return filteredImages.length > 0 ? filteredImages : downloadedImages;
   } catch (error) {
     console.error('Scrape error:', error);
     throw new Error('페이지에서 이미지를 추출할 수 없습니다.');
