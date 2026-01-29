@@ -175,17 +175,33 @@ async function scrapeCommerceImages(url: string, sourceType: SourceType): Promis
     console.log(`[Scrape] ${downloadedImages.length}개 이미지 다운로드 완료`);
 
     if (downloadedImages.length === 0) {
+      console.warn(`[Scrape] 다운로드된 이미지가 없습니다. foundUrls: ${foundUrls.size}`);
       return [];
     }
 
-    // 2단계: 모델착용컷 필터링 (병렬 처리, 최대 10개씩)
-    const filterPromises = downloadedImages.map(async (dataUrl) => {
+    // 2단계: 모델착용컷 필터링 (병렬 처리)
+    // Gemini Vision 필터링은 선택적으로 적용 (API 키가 있고, 이미지가 많을 때만)
+    const shouldFilter = process.env.GOOGLE_CLOUD_API_KEY && downloadedImages.length > 3;
+
+    if (!shouldFilter) {
+      console.log(`[Scrape] Gemini Vision 필터링 건너뜀 (API 키 없음 또는 이미지 ${downloadedImages.length}개)`);
+      return downloadedImages;
+    }
+
+    const filterPromises = downloadedImages.map(async (dataUrl, index) => {
       const isModelWearing = await detectModelWearing(dataUrl);
+      console.log(`[Scrape] 이미지 ${index + 1}/${downloadedImages.length}: ${isModelWearing ? 'PASS' : 'SKIP'}`);
       return isModelWearing ? dataUrl : null;
     });
 
     const filteredImages = (await Promise.all(filterPromises)).filter((img): img is string => img !== null);
-    console.log(`[Scrape] ${filteredImages.length}개 모델착용컷 필터링 완료`);
+    console.log(`[Scrape] ${filteredImages.length}/${downloadedImages.length}개 모델착용컷 필터링 완료`);
+
+    // 필터링 후 이미지가 너무 적으면 원본 반환
+    if (filteredImages.length === 0 && downloadedImages.length > 0) {
+      console.warn(`[Scrape] 필터링 결과 0개 - 원본 ${downloadedImages.length}개 반환`);
+      return downloadedImages;
+    }
 
     return filteredImages;
   } catch (error) {
@@ -235,8 +251,10 @@ function isValidImageUrl(url: string, sourceType: SourceType): boolean {
     case 'wconcept':
       return url.includes('wconcept') && !url.includes('common');
     case 'yourbutton':
-      // yourbutton 쇼핑몰 이미지 필터링
-      return url.includes('yourbutton') || url.includes('cafe24') || url.includes('product') || url.includes('goods');
+      // yourbutton 쇼핑몰 이미지 필터링 (cafe24 기반, 매우 관대하게)
+      // 제외할 것만 필터링
+      const excludeYourbutton = /thumb|icon|logo|banner/i;
+      return !excludeYourbutton.test(url);
     default:
       return true;
   }
