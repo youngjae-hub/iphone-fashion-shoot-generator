@@ -5,7 +5,7 @@ export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 // 지원하는 소스 타입
-type SourceType = 'google-drive' | 'ably' | 'zigzag' | 'musinsa' | 'wconcept' | 'generic';
+type SourceType = 'google-drive' | 'ably' | 'zigzag' | 'musinsa' | 'wconcept' | 'yourbutton' | 'generic';
 
 interface ScrapeRequest {
   url: string;
@@ -28,6 +28,7 @@ function detectSourceType(url: string): SourceType {
   if (hostname.includes('zigzag.kr') || hostname.includes('croquis')) return 'zigzag';
   if (hostname.includes('musinsa.com')) return 'musinsa';
   if (hostname.includes('wconcept.co.kr')) return 'wconcept';
+  if (hostname.includes('yourbutton.co.kr')) return 'yourbutton';
 
   return 'generic';
 }
@@ -102,12 +103,16 @@ async function scrapeCommerceImages(url: string, sourceType: SourceType): Promis
       /<img[^>]+src=["']([^"']+)["'][^>]*>/gi,
       // data-src (lazy loading)
       /<img[^>]+data-src=["']([^"']+)["'][^>]*>/gi,
+      // data-original (cafe24 lazy loading)
+      /<img[^>]+data-original=["']([^"']+)["'][^>]*>/gi,
       // srcset
       /srcset=["']([^"'\s]+)/gi,
       // background-image
       /background-image:\s*url\(['"]?([^'")\s]+)['"]?\)/gi,
       // JSON 내 이미지 URL
       /"(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/gi,
+      // cafe24 특수 패턴
+      /\/web\/product\/[^"'\s]+\.(?:jpg|jpeg|png|webp)/gi,
     ];
 
     const foundUrls = new Set<string>();
@@ -123,6 +128,10 @@ async function scrapeCommerceImages(url: string, sourceType: SourceType): Promis
         } else if (imgUrl.startsWith('/')) {
           const baseUrl = new URL(url);
           imgUrl = baseUrl.origin + imgUrl;
+        } else if (!imgUrl.startsWith('http')) {
+          // 완전 상대 경로
+          const baseUrl = new URL(url);
+          imgUrl = baseUrl.origin + '/' + imgUrl;
         }
 
         // 유효한 이미지 URL만 필터링
@@ -132,8 +141,10 @@ async function scrapeCommerceImages(url: string, sourceType: SourceType): Promis
       }
     }
 
-    // 이미지 다운로드 및 base64 변환
-    const imagePromises = Array.from(foundUrls).slice(0, 50).map(async (imgUrl) => {
+    console.log(`[Scrape] ${sourceType}: ${foundUrls.size}개 이미지 URL 발견`);
+
+    // 이미지 다운로드 및 base64 변환 (1단계: 다운로드만)
+    const downloadPromises = Array.from(foundUrls).slice(0, 50).map(async (imgUrl) => {
       try {
         const imgResponse = await fetch(imgUrl, {
           headers: {
@@ -154,13 +165,29 @@ async function scrapeCommerceImages(url: string, sourceType: SourceType): Promis
 
         const base64 = Buffer.from(buffer).toString('base64');
         return `data:${contentType};base64,${base64}`;
-      } catch {
+      } catch (e) {
+        console.error('[Scrape] 이미지 다운로드 실패:', imgUrl.substring(0, 50), e);
         return null;
       }
     });
 
-    const results = await Promise.all(imagePromises);
-    return results.filter((img): img is string => img !== null);
+    const downloadedImages = (await Promise.all(downloadPromises)).filter((img): img is string => img !== null);
+    console.log(`[Scrape] ${downloadedImages.length}개 이미지 다운로드 완료`);
+
+    if (downloadedImages.length === 0) {
+      return [];
+    }
+
+    // 2단계: 모델착용컷 필터링 (병렬 처리, 최대 10개씩)
+    const filterPromises = downloadedImages.map(async (dataUrl) => {
+      const isModelWearing = await detectModelWearing(dataUrl);
+      return isModelWearing ? dataUrl : null;
+    });
+
+    const filteredImages = (await Promise.all(filterPromises)).filter((img): img is string => img !== null);
+    console.log(`[Scrape] ${filteredImages.length}개 모델착용컷 필터링 완료`);
+
+    return filteredImages;
   } catch (error) {
     console.error('Scrape error:', error);
     throw new Error('페이지에서 이미지를 추출할 수 없습니다.');
@@ -186,12 +213,12 @@ function isValidImageUrl(url: string, sourceType: SourceType): boolean {
   }
 
   // 이미지 확장자 확인
-  const imageExtensions = /\.(jpg|jpeg|png|webp|gif)(\?|$)/i;
+  const imageExtensions = /\.(jpg|jpeg|png|webp)(\?|$|&)/i;
   if (!imageExtensions.test(url)) {
     // CDN URL의 경우 확장자가 없을 수 있음
     const cdnPatterns = [
       /cloudinary/i, /imgix/i, /cloudfront/i,
-      /cdn/i, /image/i, /img/i, /photo/i,
+      /cdn/i, /image/i, /img/i, /photo/i, /cafe24/i,
     ];
     const hasCdnPattern = cdnPatterns.some(p => p.test(url));
     if (!hasCdnPattern) return false;
@@ -207,6 +234,9 @@ function isValidImageUrl(url: string, sourceType: SourceType): boolean {
       return url.includes('image.msscdn.net') || url.includes('goods');
     case 'wconcept':
       return url.includes('wconcept') && !url.includes('common');
+    case 'yourbutton':
+      // yourbutton 쇼핑몰 이미지 필터링
+      return url.includes('yourbutton') || url.includes('cafe24') || url.includes('product') || url.includes('goods');
     default:
       return true;
   }
@@ -222,6 +252,47 @@ async function scrapeAbly(url: string): Promise<string[]> {
 // 지그재그 전용 스크래퍼
 async function scrapeZigzag(url: string): Promise<string[]> {
   return scrapeCommerceImages(url, 'zigzag');
+}
+
+// 모델착용컷 vs 제품컷 판별 (Gemini Vision 사용)
+async function detectModelWearing(imageBase64: string): Promise<boolean> {
+  try {
+    const apiKey = process.env.GOOGLE_CLOUD_API_KEY;
+    if (!apiKey) {
+      console.warn('[detectModelWearing] GOOGLE_CLOUD_API_KEY 없음 - 모든 이미지 허용');
+      return true; // API 키 없으면 모든 이미지 허용
+    }
+
+    // Gemini Vision API 호출
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: 'Is this image showing a person wearing clothes (model wearing shot)? Answer only "yes" or "no".' },
+              { inline_data: { mime_type: imageBase64.split(';')[0].split(':')[1], data: imageBase64.split(',')[1] } }
+            ]
+          }]
+        })
+      }
+    );
+
+    if (!response.ok) {
+      console.warn('[detectModelWearing] API 호출 실패:', response.status);
+      return true; // 에러 시 모든 이미지 허용
+    }
+
+    const data = await response.json();
+    const answer = data.candidates?.[0]?.content?.parts?.[0]?.text?.toLowerCase() || '';
+
+    return answer.includes('yes');
+  } catch (error) {
+    console.error('[detectModelWearing] 에러:', error);
+    return true; // 에러 시 모든 이미지 허용
+  }
 }
 
 // POST: URL에서 이미지 추출

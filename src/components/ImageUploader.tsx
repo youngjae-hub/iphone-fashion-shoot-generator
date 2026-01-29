@@ -47,6 +47,9 @@ export default function ImageUploader({
   const [isStyleDragOver, setIsStyleDragOver] = useState(false);
   const [isBackgroundSpotDragOver, setIsBackgroundSpotDragOver] = useState(false);
   const [classifyingIds, setClassifyingIds] = useState<Set<string>>(new Set());
+  const [urlInput, setUrlInput] = useState('');
+  const [isLoadingUrl, setIsLoadingUrl] = useState(false);
+  const [urlError, setUrlError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const styleInputRef = useRef<HTMLInputElement>(null);
   const backgroundSpotInputRef = useRef<HTMLInputElement>(null);
@@ -237,6 +240,61 @@ export default function ImageUploader({
     }
   };
 
+  // URL에서 이미지 크롤링
+  const handleUrlFetch = async () => {
+    if (!urlInput.trim()) {
+      setUrlError('URL을 입력하세요');
+      return;
+    }
+
+    setIsLoadingUrl(true);
+    setUrlError('');
+
+    try {
+      const response = await fetch('/api/scrape-images', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: urlInput, maxImages: maxImages - uploadedImages.length }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        setUrlError(data.error || '이미지를 가져올 수 없습니다');
+        return;
+      }
+
+      if (!data.images || data.images.length === 0) {
+        setUrlError('이미지를 찾을 수 없습니다');
+        return;
+      }
+
+      // base64 이미지를 UploadedImage 형식으로 변환
+      const newImages: UploadedImage[] = data.images.map((base64: string) => ({
+        id: uuidv4(),
+        preview: base64,
+        type: 'garment' as const,
+      }));
+
+      onUpload(newImages);
+
+      // 자동 분류 실행
+      if (autoClassify) {
+        for (const img of newImages) {
+          classifyGarment(img.id, img.preview);
+        }
+      }
+
+      setUrlInput('');
+      setUrlError('');
+    } catch (error) {
+      console.error('URL fetch error:', error);
+      setUrlError('네트워크 오류가 발생했습니다');
+    } finally {
+      setIsLoadingUrl(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Garment Upload Zone */}
@@ -283,6 +341,66 @@ export default function ImageUploader({
             PNG, JPG, WEBP (최대 {maxImages}장)
           </p>
         </div>
+      </div>
+
+      {/* URL 입력 영역 */}
+      <div className="p-4 rounded-lg border" style={{ borderColor: 'var(--border)', background: 'var(--background-secondary)' }}>
+        <div className="flex items-center gap-2 mb-2">
+          <svg className="w-4 h-4" style={{ color: 'var(--accent)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+          </svg>
+          <span className="text-sm font-medium">쇼핑몰 URL에서 가져오기</span>
+          <span className="text-xs px-2 py-0.5 rounded" style={{ background: 'var(--accent-light)', color: 'var(--accent)' }}>
+            자동
+          </span>
+        </div>
+        <p className="text-xs mb-3" style={{ color: 'var(--foreground-muted)' }}>
+          지그재그, 에이블리, 무신사, yourbutton 등 쇼핑몰 상품 페이지 URL을 입력하세요
+        </p>
+        <div className="flex gap-2">
+          <input
+            type="url"
+            value={urlInput}
+            onChange={(e) => {
+              setUrlInput(e.target.value);
+              setUrlError('');
+            }}
+            onKeyPress={(e) => e.key === 'Enter' && handleUrlFetch()}
+            placeholder="https://..."
+            className="flex-1 px-3 py-2 rounded-lg text-sm"
+            style={{
+              background: 'var(--background-tertiary)',
+              border: `1px solid ${urlError ? 'rgb(239, 68, 68)' : 'var(--border)'}`,
+              color: 'var(--foreground)'
+            }}
+            disabled={isLoadingUrl}
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleUrlFetch();
+            }}
+            disabled={isLoadingUrl || !urlInput.trim()}
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              background: 'var(--accent)',
+              color: 'white',
+            }}
+          >
+            {isLoadingUrl ? (
+              <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
+                <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" className="opacity-75" />
+              </svg>
+            ) : '가져오기'}
+          </button>
+        </div>
+        {urlError && (
+          <p className="text-xs mt-2" style={{ color: 'rgb(239, 68, 68)' }}>
+            {urlError}
+          </p>
+        )}
       </div>
 
       {/* Uploaded Garment Images Grid */}
