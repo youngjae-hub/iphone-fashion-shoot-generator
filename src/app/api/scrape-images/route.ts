@@ -246,10 +246,9 @@ function isValidImageUrl(url: string, sourceType: SourceType): boolean {
     case 'wconcept':
       return url.includes('wconcept') && !url.includes('common');
     case 'yourbutton':
-      // yourbutton 쇼핑몰 이미지 필터링 (cafe24 기반, 매우 관대하게)
-      // 제외할 것만 필터링
-      const excludeYourbutton = /thumb|icon|logo|banner/i;
-      return !excludeYourbutton.test(url);
+      // yourbutton 쇼핑몰 이미지 필터링 (상품 이미지만 허용)
+      // cafe24 상품 이미지 경로: /web/product/medium/, /web/product/big/ 등
+      return url.includes('/web/product/') && !url.includes('/web/upload/');
     default:
       return true;
   }
