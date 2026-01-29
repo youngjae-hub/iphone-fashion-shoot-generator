@@ -215,7 +215,7 @@ function isValidImageUrl(url: string, sourceType: SourceType): boolean {
   const excludePatterns = [
     /icon/i, /logo/i, /sprite/i, /banner/i, /ad[_-]/i,
     /placeholder/i, /loading/i, /spinner/i, /arrow/i,
-    /button/i, /badge/i, /avatar/i, /profile/i,
+    /btn[_-]/i, /_button[_-]/i, /badge/i, /avatar/i, /profile/i,  // button → btn으로 변경 (yourbutton 도메인 허용)
     /1x1/, /pixel/, /tracking/, /analytics/,
   ];
 
