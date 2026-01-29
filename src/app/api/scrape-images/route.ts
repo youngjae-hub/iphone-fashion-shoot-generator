@@ -161,8 +161,11 @@ async function scrapeCommerceImages(url: string, sourceType: SourceType): Promis
 
         const buffer = await imgResponse.arrayBuffer();
 
-        // 최소 크기 필터 (너무 작은 이미지 제외)
-        if (buffer.byteLength < 10000) return null; // 10KB 미만 제외
+        // 최소 크기 필터 (아이콘/썸네일 제외)
+        if (buffer.byteLength < 1000) {
+          console.log(`[Scrape] 이미지 너무 작음: ${imgUrl.substring(0, 50)} (${buffer.byteLength} bytes)`);
+          return null; // 1KB 미만만 제외
+        }
 
         const base64 = Buffer.from(buffer).toString('base64');
         return `data:${contentType};base64,${base64}`;
