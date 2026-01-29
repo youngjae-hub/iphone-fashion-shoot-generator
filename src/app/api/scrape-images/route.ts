@@ -183,22 +183,32 @@ async function scrapeCommerceImages(url: string, sourceType: SourceType): Promis
       return [];
     }
 
-    // Gemini Vision 필터링 임시 비활성화 (안정성 우선)
-    console.log(`[Scrape] Gemini Vision 필터링 비활성화 - 모든 이미지 반환`);
-    return downloadedImages;
+    // Gemini Vision 필터링: 모델착용컷만 선별
+    const shouldFilter = process.env.GOOGLE_CLOUD_API_KEY;
 
-    // TODO: Gemini Vision 필터링 재활성화
-    // const shouldFilter = process.env.GOOGLE_CLOUD_API_KEY && downloadedImages.length > 3;
-    // if (!shouldFilter) {
-    //   return downloadedImages;
-    // }
-    // const filterPromises = downloadedImages.map(async (dataUrl, index) => {
-    //   const isModelWearing = await detectModelWearing(dataUrl);
-    //   console.log(`[Scrape] 이미지 ${index + 1}/${downloadedImages.length}: ${isModelWearing ? 'PASS' : 'SKIP'}`);
-    //   return isModelWearing ? dataUrl : null;
-    // });
-    // const filteredImages = (await Promise.all(filterPromises)).filter((img): img is string => img !== null);
-    // return filteredImages.length > 0 ? filteredImages : downloadedImages;
+    if (!shouldFilter) {
+      console.warn(`[Scrape] GOOGLE_CLOUD_API_KEY 없음 - Gemini Vision 필터링 건너뜀`);
+      return downloadedImages;
+    }
+
+    console.log(`[Scrape] Gemini Vision으로 모델착용컷 필터링 시작 (${downloadedImages.length}개)`);
+
+    const filterPromises = downloadedImages.map(async (dataUrl, index) => {
+      const isModelWearing = await detectModelWearing(dataUrl);
+      console.log(`[Scrape] 이미지 ${index + 1}/${downloadedImages.length}: ${isModelWearing ? '✅ PASS (모델컷)' : '❌ SKIP (제품컷)'}`);
+      return isModelWearing ? dataUrl : null;
+    });
+
+    const filteredImages = (await Promise.all(filterPromises)).filter((img): img is string => img !== null);
+    console.log(`[Scrape] 필터링 완료: ${filteredImages.length}/${downloadedImages.length}개 모델착용컷 선별`);
+
+    // 필터링 결과가 0개면 원본 반환 (안전장치)
+    if (filteredImages.length === 0 && downloadedImages.length > 0) {
+      console.warn(`[Scrape] 모델착용컷 0개 - 원본 ${downloadedImages.length}개 반환 (안전장치)`);
+      return downloadedImages;
+    }
+
+    return filteredImages;
   } catch (error) {
     console.error('Scrape error:', error);
     throw new Error('페이지에서 이미지를 추출할 수 없습니다.');
