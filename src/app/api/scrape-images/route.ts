@@ -111,8 +111,8 @@ async function scrapeCommerceImages(url: string, sourceType: SourceType): Promis
       /background-image:\s*url\(['"]?([^'")\s]+)['"]?\)/gi,
       // JSON 내 이미지 URL
       /"(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/gi,
-      // cafe24 특수 패턴
-      /\/web\/product\/[^"'\s]+\.(?:jpg|jpeg|png|webp)/gi,
+      // cafe24 특수 패턴 (캡처 그룹 추가)
+      /(\/web\/product\/[^"'\s]+\.(?:jpg|jpeg|png|webp))/gi,
     ];
 
     const foundUrls = new Set<string>();
@@ -120,7 +120,8 @@ async function scrapeCommerceImages(url: string, sourceType: SourceType): Promis
     for (const pattern of imgPatterns) {
       let match;
       while ((match = pattern.exec(html)) !== null) {
-        let imgUrl = match[1];
+        // match[1] 또는 match[0] 사용 (일부 패턴은 캡처 그룹이 없을 수 있음)
+        let imgUrl = match[1] || match[0];
 
         // 상대 경로를 절대 경로로 변환
         if (imgUrl.startsWith('//')) {
