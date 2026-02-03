@@ -125,34 +125,38 @@ export async function POST(request: NextRequest) {
     // 병렬 이미지 생성 함수
     async function generateSingleImage(task: GenerationTask): Promise<GeneratedImage | null> {
       try {
-        // 1. 의류 이미지를 입은 모델 이미지 생성
-        const modelImage = await imageProvider.generateModelImage({
-          pose: task.pose,
-          style: settings.modelStyle,
-          seed: settings.seed ? settings.seed + task.shotIndex : undefined,
-          negativePrompt: negativePrompt || settings.negativePrompt,
-          garmentImage, // 업로드한 의류 이미지 전달
-          styleReferenceImages, // 스타일 참조 이미지들 전달
-          backgroundSpotImages, // 배경 스팟 이미지들 전달
-          customPrompt: basePrompt, // 커스텀 프롬프트 전달
-        });
-
-        let resultImage = modelImage;
-
-        // 2. Virtual Try-On 적용 (가용한 경우에만)
-        if (tryOnAvailable) {
-          try {
-            resultImage = await tryOnProvider.tryOn({
-              garmentImage,
-              modelImage,
-              pose: task.pose,
-              category: 'upper',
-            });
-          } catch (tryOnError) {
-            console.warn('Try-On failed, using model image:', tryOnError);
-            // Try-On 실패 시 모델 이미지 그대로 사용
-          }
+        // Virtual Try-On 필수 체크
+        if (!tryOnAvailable) {
+          throw new Error('Virtual Try-On이 필수입니다. REPLICATE_API_TOKEN을 확인하세요.');
         }
+
+        let modelImage: string;
+
+        // 1. 스타일 참조 이미지가 있으면 그것을 모델 이미지로 사용 (옷만 갈아끼우기)
+        if (styleReferenceImages && styleReferenceImages.length > 0) {
+          // 포즈별로 다른 참조 이미지를 사용하거나, 첫 번째 이미지 사용
+          const referenceIndex = Math.min(task.shotIndex, styleReferenceImages.length - 1);
+          modelImage = styleReferenceImages[referenceIndex];
+          console.log(`Using style reference image ${referenceIndex} as base model for ${task.pose}`);
+        } else {
+          // 참조 이미지가 없으면 AI로 모델 생성
+          modelImage = await imageProvider.generateModelImage({
+            pose: task.pose,
+            style: settings.modelStyle,
+            seed: settings.seed ? settings.seed + task.shotIndex : undefined,
+            negativePrompt: negativePrompt || settings.negativePrompt,
+            backgroundSpotImages, // 배경 스팟 이미지들 전달
+            customPrompt: basePrompt, // 커스텀 프롬프트 전달
+          });
+        }
+
+        // 2. Virtual Try-On 필수 적용 (의류만 교체)
+        const resultImage = await tryOnProvider.tryOn({
+          garmentImage,
+          modelImage,
+          pose: task.pose,
+          category: 'upper',
+        });
 
         return {
           id: uuidv4(),
@@ -160,11 +164,13 @@ export async function POST(request: NextRequest) {
           pose: task.pose,
           timestamp: Date.now(),
           settings,
-          provider: tryOnAvailable ? `${providers.imageGeneration} + ${providers.tryOn}` : providers.imageGeneration,
+          provider: styleReferenceImages && styleReferenceImages.length > 0
+            ? `${providers.tryOn} (Reference-based)`
+            : `${providers.imageGeneration} + ${providers.tryOn}`,
         };
       } catch (error) {
         console.error(`Error generating image for pose ${task.pose}, shot ${task.shotIndex}:`, error);
-        return null; // 개별 이미지 실패는 전체 요청을 실패시키지 않음
+        throw error; // Try-On 실패는 전체 요청 실패로 처리
       }
     }
 
@@ -172,18 +178,35 @@ export async function POST(request: NextRequest) {
     console.log(`Starting parallel generation of ${tasks.length} images...`);
     const startTime = Date.now();
 
-    const results = await Promise.all(tasks.map(task => generateSingleImage(task)));
+    const results = await Promise.allSettled(tasks.map(task => generateSingleImage(task)));
 
-    const generatedImages: GeneratedImage[] = results.filter((img): img is GeneratedImage => img !== null);
+    const generatedImages: GeneratedImage[] = [];
+    const errors: string[] = [];
+
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        generatedImages.push(result.value);
+      } else {
+        errors.push(`${tasks[index].pose} 포즈 실패: ${result.reason?.message || result.reason}`);
+        console.error(`Task ${index} failed:`, result.reason);
+      }
+    });
 
     console.log(`Parallel generation completed in ${(Date.now() - startTime) / 1000}s - ${generatedImages.length}/${tasks.length} successful`);
 
     if (generatedImages.length === 0) {
       return NextResponse.json(
-        { success: false, error: '이미지 생성에 실패했습니다. API 설정을 확인해주세요.' },
+        {
+          success: false,
+          error: 'Virtual Try-On에 실패했습니다.',
+          details: errors.join(', ')
+        },
         { status: 500 }
       );
     }
+
+    // 일부 실패한 경우 경고 포함
+    const partialSuccess = generatedImages.length < tasks.length;
 
     // Notion 로깅 (비동기 - 응답을 지연시키지 않음)
     if (process.env.NOTION_API_KEY && process.env.NOTION_DATABASE_ID) {
@@ -210,6 +233,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       images: generatedImages,
+      warnings: partialSuccess ? errors : undefined,
     });
   } catch (error) {
     console.error('Generation error:', error);
