@@ -155,7 +155,7 @@ export async function POST(request: NextRequest) {
           garmentImage,
           modelImage,
           pose: task.pose,
-          category: 'upper',
+          category: 'upper_body',
         });
 
         return {
@@ -284,7 +284,7 @@ export async function PUT(request: NextRequest) {
       garmentImage,
       modelImage,
       pose,
-      category: 'upper',
+      category: 'upper_body',
     });
 
     return NextResponse.json({

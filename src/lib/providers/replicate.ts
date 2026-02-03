@@ -98,7 +98,7 @@ export class FluxImageProvider implements IImageGenerationProvider {
           width: 768,
           height: 1024,
           num_inference_steps: 4,
-          guidance_scale: 0.0,
+          guidance_scale: 1.0, // SDXL Turbo minimum value
         }
       }
     );
@@ -124,7 +124,7 @@ export class FluxImageProvider implements IImageGenerationProvider {
           width: 768,
           height: 1024,
           num_inference_steps: 4,
-          guidance_scale: 0.0,
+          guidance_scale: 1.0, // SDXL Turbo minimum value
         }
       }
     );
@@ -150,9 +150,9 @@ export class IDMVTONProvider implements ITryOnProvider {
   async tryOn(options: TryOnOptions): Promise<string> {
     const replicate = getReplicateClient();
 
-    // IDM-VTON 모델 실행
+    // IDM-VTON 모델 실행 (최신 버전: 2025-03-25)
     const output = await replicate.run(
-      "cuuupid/idm-vton:c871bb9b046f351a536e7819bb21256cc1c7e0cd9ff4c782e3b4ad583f7febcc" as `${string}/${string}`,
+      "cuuupid/idm-vton:0513734a452173b8173e907e3a59d19a36266e55b48528559432bd21c7d7e985" as `${string}/${string}`,
       {
         input: {
           crop: false,
