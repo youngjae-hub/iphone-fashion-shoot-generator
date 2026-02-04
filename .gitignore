@@ -45,3 +45,8 @@ next-env.d.ts
 # test images
 /test/
 .env*.local
+
+# Test files and artifacts
+test-images/*.jpg
+test-images/*.png
+test-results.txt
