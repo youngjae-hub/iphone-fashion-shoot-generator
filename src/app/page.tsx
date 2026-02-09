@@ -11,7 +11,6 @@ import {
   LoRATraining,
   History,
   PromptEditor,
-  ProductRetouching,
   ModelShotGenerator,
 } from '@/components';
 import {
@@ -41,7 +40,7 @@ export default function Home() {
     tryOn: Record<string, boolean>;
   } | undefined>();
   const [activeTab, setActiveTab] = useState<'upload' | 'settings' | 'prompt' | 'provider' | 'training' | 'history'>('upload');
-  const [mainTab, setMainTab] = useState<'model-cut' | 'ai-model-shot' | 'product-retouch'>('model-cut');
+  const [mainTab, setMainTab] = useState<'model-cut' | 'ai-model-shot'>('model-cut');
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [styleReferenceImages, setStyleReferenceImages] = useState<UploadedImage[]>([]);
   const [backgroundSpotImages, setBackgroundSpotImages] = useState<UploadedImage[]>([]);
@@ -330,24 +329,12 @@ export default function Home() {
           >
             AI 모델컷
           </button>
-          <button
-            onClick={() => setMainTab('product-retouch')}
-            className={`py-3 px-5 text-sm font-medium border-b-2 transition-all ${
-              mainTab === 'product-retouch'
-                ? 'border-[var(--foreground)] text-[var(--foreground)]'
-                : 'border-transparent text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
-            }`}
-          >
-            의류 제품컷 리터칭
-          </button>
         </div>
       </div>
 
       {/* Main Content */}
       <main className="flex-1 flex overflow-hidden">
-        {mainTab === 'product-retouch' ? (
-          <ProductRetouching />
-        ) : mainTab === 'ai-model-shot' ? (
+        {mainTab === 'ai-model-shot' ? (
           <ModelShotGenerator />
         ) : (
           <>
