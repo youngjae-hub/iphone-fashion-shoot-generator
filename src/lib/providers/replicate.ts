@@ -155,15 +155,15 @@ export class IDMVTONProvider implements ITryOnProvider {
       "cuuupid/idm-vton:0513734a452173b8173e907e3a59d19a36266e55b48528559432bd21c7d7e985" as `${string}/${string}`,
       {
         input: {
-          crop: false,
+          crop: true, // Enable auto-cropping for better aspect ratio handling
           seed: 42,
-          steps: 30,
+          steps: 35, // Increase steps for better quality
           category: options.category || "upper_body",
           force_dc: false,
           garm_img: options.garmentImage,
           human_img: options.modelImage,
           mask_only: false,
-          garment_des: "fashion garment, high quality fabric",
+          garment_des: "fashion garment, high quality fabric, detailed pattern",
         }
       }
     );
