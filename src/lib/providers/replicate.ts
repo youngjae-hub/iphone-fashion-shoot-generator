@@ -157,7 +157,7 @@ export class IDMVTONProvider implements ITryOnProvider {
         input: {
           crop: true, // Enable auto-cropping for better aspect ratio handling
           seed: 42,
-          steps: 35, // Increase steps for better quality
+          steps: 25, // Balanced: speed + quality
           category: options.category || "upper_body",
           force_dc: false,
           garm_img: options.garmentImage,
