@@ -118,6 +118,12 @@ export async function createGenerationLogDatabase(parentPageId: string): Promise
         '생성일시': {
           date: {},
         },
+        '총 생성 컷 수': {
+          number: {},
+        },
+        '소요 시간 (초)': {
+          number: {},
+        },
       },
     },
   });
@@ -144,6 +150,8 @@ export interface GenerationLogEntry {
   garmentImageUrl?: string;
   styleReferenceInfo?: string;
   backgroundSpotInfo?: string;
+  totalShotsGenerated?: number; // 총 생성 컷 수
+  durationSeconds?: number; // 소요 시간 (초)
 }
 
 export async function logGeneration(entry: GenerationLogEntry): Promise<string> {
@@ -220,6 +228,18 @@ export async function logGeneration(entry: GenerationLogEntry): Promise<string> 
   if (entry.backgroundSpotInfo) {
     properties['배경스팟 이미지'] = {
       rich_text: [{ text: { content: truncateText(entry.backgroundSpotInfo, 2000) } }],
+    };
+  }
+
+  if (entry.totalShotsGenerated !== undefined) {
+    properties['총 생성 컷 수'] = {
+      number: entry.totalShotsGenerated,
+    };
+  }
+
+  if (entry.durationSeconds !== undefined) {
+    properties['소요 시간 (초)'] = {
+      number: entry.durationSeconds,
     };
   }
 

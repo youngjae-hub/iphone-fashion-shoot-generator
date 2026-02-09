@@ -210,6 +210,7 @@ export async function POST(request: NextRequest) {
 
     // Notion 로깅 (비동기 - 응답을 지연시키지 않음)
     if (process.env.NOTION_API_KEY && process.env.NOTION_DATABASE_ID) {
+      const durationSeconds = Math.round((Date.now() - startTime) / 100) / 10; // 소수점 1자리
       const logEntries: GenerationLogEntry[] = generatedImages.map(img => ({
         title: `${img.pose} - ${providers.imageGeneration}`,
         provider: providers.imageGeneration,
@@ -223,6 +224,8 @@ export async function POST(request: NextRequest) {
         resultImageUrl: img.url.startsWith('http') ? img.url : undefined,
         styleReferenceInfo: styleReferenceImages?.length ? `${styleReferenceImages.length}장 사용` : undefined,
         backgroundSpotInfo: backgroundSpotImages?.length ? `${backgroundSpotImages.length}장 사용` : undefined,
+        totalShotsGenerated: generatedImages.length, // 총 생성 컷 수
+        durationSeconds: durationSeconds, // 소요 시간 (초)
       }));
 
       logGenerationBatch(logEntries).catch(err => {
