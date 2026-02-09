@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 병렬 이미지 생성 함수
-    async function generateSingleImage(task: GenerationTask): Promise<GeneratedImage | null> {
+    async function generateSingleImage(task: GenerationTask): Promise<GeneratedImage> {
       try {
         // Virtual Try-On 필수 체크
         if (!tryOnAvailable) {

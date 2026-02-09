@@ -41,7 +41,7 @@ export interface TryOnOptions {
   garmentImage: string; // base64
   modelImage?: string; // base64, optional - 없으면 모델도 생성
   pose: PoseType;
-  category?: 'upper' | 'lower' | 'full';
+  category?: 'upper_body' | 'lower_body' | 'dresses' | 'full';
 }
 
 // Provider Registry - 런타임에 Provider 교체 가능
