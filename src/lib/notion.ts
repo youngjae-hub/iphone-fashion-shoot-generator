@@ -16,7 +16,7 @@ function getNotionClient(): Client {
 
 // Database ID 환경 변수
 function getDatabaseId(): string {
-  const id = process.env.NOTION_DATABASE_ID;
+  const id = process.env.NOTION_DATABASE_ID?.trim();
   if (!id) {
     throw new Error('NOTION_DATABASE_ID 환경 변수가 설정되지 않았습니다. /api/notion-log/setup을 먼저 실행하세요.');
   }
