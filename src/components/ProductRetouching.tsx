@@ -453,19 +453,19 @@ export default function ProductRetouching() {
         id: image.id,
         originalUrl: image.preview,
         processedUrl: '',
-        fileName: image.file.name,
+        fileName: image.file?.name || `image-${image.id}.jpg`,
         status: 'processing',
       };
       results.push(processedImage);
       setProcessedImages([...results]);
 
       try {
-        // 파일을 리사이즈된 base64로 변환
-        const base64Image = await fileToResizedBase64(image.file);
+        // 파일을 리사이즈된 base64로 변환 (file이 있으면 변환, 없으면 preview 사용)
+        const base64Image = image.file ? await fileToResizedBase64(image.file) : image.preview;
 
         // Pikes AI인 경우 별도 API 호출
         if (brandConfig.retouchMethod === 'pikes') {
-          console.log(`[Pikes] Sending request for ${image.file.name}...`);
+          console.log(`[Pikes] Sending request for ${image.file?.name || 'image'}...`);
           const pikesResponse = await fetch('/api/pikes', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -498,7 +498,7 @@ export default function ProductRetouching() {
         }
 
         // 기존 API 호출
-        console.log(`[Retouch] Sending request for ${image.file.name}...`);
+        console.log(`[Retouch] Sending request for ${image.file?.name || 'image'}...`);
         const response = await fetch('/api/retouch', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

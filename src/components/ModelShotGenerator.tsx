@@ -281,8 +281,8 @@ export default function ModelShotGenerator() {
       setResults(prev => [result, ...prev]);
 
       try {
-        // 파일을 base64로 변환
-        const garmentBase64 = await fileToBase64(garment.file);
+        // 파일을 base64로 변환 (file이 있으면 변환, 없으면 preview 사용)
+        const garmentBase64 = garment.file ? await fileToBase64(garment.file) : garment.preview;
 
         // API 호출
         const response = await fetch('/api/model-shot', {

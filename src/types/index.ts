@@ -42,7 +42,7 @@ export type GarmentCategory = 'top' | 'bottom' | 'dress' | 'outer' | 'accessory'
 // Image Types
 export interface UploadedImage {
   id: string;
-  file: File;
+  file?: File; // Optional - URL로 가져온 이미지는 File 객체가 없음
   preview: string;
   type: 'garment' | 'background' | 'reference' | 'style-reference' | 'background-spot';
   processedUrl?: string;
