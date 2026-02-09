@@ -157,7 +157,7 @@ export class IDMVTONProvider implements ITryOnProvider {
         input: {
           crop: true, // Enable auto-cropping for better aspect ratio handling
           seed: options.seed !== undefined ? options.seed : 42,
-          steps: 20, // Fast: prioritize speed
+          steps: 10, // Ultra-fast: 10 steps = ~20-30초 (Vercel 60초 제한 대응)
           category: options.category || "upper_body",
           force_dc: false,
           garm_img: options.garmentImage,
