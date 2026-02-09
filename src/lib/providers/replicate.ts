@@ -155,15 +155,15 @@ export class IDMVTONProvider implements ITryOnProvider {
       "cuuupid/idm-vton:0513734a452173b8173e907e3a59d19a36266e55b48528559432bd21c7d7e985" as `${string}/${string}`,
       {
         input: {
-          crop: true, // Enable auto-cropping for better aspect ratio handling
+          crop: false, // Preserve original pose/background (no cropping)
           seed: options.seed !== undefined ? options.seed : 42,
-          steps: 10, // Ultra-fast: 10 steps = ~20-30초 (Vercel 60초 제한 대응)
+          steps: 25, // Balanced quality (25 steps = ~30-40초)
           category: options.category || "upper_body",
           force_dc: false,
           garm_img: options.garmentImage,
           human_img: options.modelImage,
           mask_only: false,
-          garment_des: "fashion garment, high quality fabric, detailed pattern",
+          garment_des: "fashion garment, high quality fabric, detailed pattern, accurate sleeve length",
         }
       }
     );
