@@ -42,6 +42,7 @@ export interface TryOnOptions {
   modelImage?: string; // base64, optional - 없으면 모델도 생성
   pose: PoseType;
   category?: 'upper_body' | 'lower_body' | 'dresses' | 'full';
+  seed?: number; // 각 컷마다 다른 결과를 위한 시드값
 }
 
 // Provider Registry - 런타임에 Provider 교체 가능

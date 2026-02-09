@@ -1,0 +1,21 @@
+🧪 MD 요청 테스트 시작...
+
+📷 이미지 준비:
+  - 의류: colorful-blouse.jpg (화려한 블라우스)
+  - 참조: navy-cardigan-1.jpg (네이비 가디건 모델)
+
+📤 API 요청 전송...
+
+📥 응답 (60.64초):
+  - Status: 200
+  - Success: true
+
+✅ 성공: 4개 이미지 생성
+  1. front - idm-vton (Reference-based)
+     URL: https://replicate.delivery/yhqm/N1Uxd9LeLD0Af0VJ9M136PteEbrEr19SLfbJsAJdBFGfNtuw...
+  2. front - idm-vton (Reference-based)
+     URL: https://replicate.delivery/yhqm/cBwVr3U9PlqgKVQpC4e5M3ja8sgGlEQHhHVnk94jtW8p06CL...
+  3. front - idm-vton (Reference-based)
+     URL: https://replicate.delivery/yhqm/5UeFxrdt6zy3Si9hsR5uxJLrj8fflZ5PyYDABodkYVe7nWXY...
+  4. front - idm-vton (Reference-based)
+     URL: https://replicate.delivery/yhqm/NM3pTFLEnyLfdyMpGi0Y5oTLi34IeO5GZkYlrGj5KNNip1FW...

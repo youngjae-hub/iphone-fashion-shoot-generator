@@ -156,6 +156,7 @@ export async function POST(request: NextRequest) {
           modelImage,
           pose: task.pose,
           category: 'upper_body',
+          seed: settings.seed ? settings.seed + task.shotIndex : undefined, // 각 컷마다 다른 시드
         });
 
         return {
@@ -288,6 +289,7 @@ export async function PUT(request: NextRequest) {
       modelImage,
       pose,
       category: 'upper_body',
+      seed: settings.seed,
     });
 
     return NextResponse.json({

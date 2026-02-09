@@ -1,0 +1,15 @@
+🧪 MD 요청 테스트 시작...
+
+📷 이미지 준비:
+  - 의류: colorful-blouse.jpg (화려한 블라우스)
+  - 참조: navy-cardigan-1.jpg (네이비 가디건 모델)
+
+📤 API 요청 전송...
+
+📥 응답 (16.22초):
+  - Status: 200
+  - Success: true
+
+✅ 성공: 1개 이미지 생성
+  1. front - idm-vton (Reference-based)
+     URL: https://replicate.delivery/yhqm/gkGZ3pKVX3LOPtH2GCjOYdD0S20R5co23kC0BfSRYTl5I7CL...

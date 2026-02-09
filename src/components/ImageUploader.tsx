@@ -29,6 +29,34 @@ const CATEGORY_LABELS: Record<GarmentCategory, string> = {
   unknown: '미분류',
 };
 
+// 이미지를 JPEG로 변환 (webp 호환성 문제 해결)
+async function convertImageToJPEG(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Canvas context not available'));
+          return;
+        }
+        ctx.drawImage(img, 0, 0);
+        // 항상 JPEG로 변환 (webp 호환성 문제 해결)
+        const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+        resolve(jpegDataUrl);
+      };
+      img.onerror = () => reject(new Error('Failed to load image'));
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function ImageUploader({
   onUpload,
   uploadedImages,
@@ -89,11 +117,7 @@ export default function ImageUploader({
 
         const newImages: UploadedImage[] = await Promise.all(
           filesToProcess.map(async (file) => {
-            const preview = await new Promise<string>((resolve) => {
-              const reader = new FileReader();
-              reader.onload = (e) => resolve(e.target?.result as string);
-              reader.readAsDataURL(file);
-            });
+            const preview = await convertImageToJPEG(file);
 
             return {
               id: uuidv4(),
@@ -115,11 +139,7 @@ export default function ImageUploader({
 
         const newImages: UploadedImage[] = await Promise.all(
           filesToProcess.map(async (file) => {
-            const preview = await new Promise<string>((resolve) => {
-              const reader = new FileReader();
-              reader.onload = (e) => resolve(e.target?.result as string);
-              reader.readAsDataURL(file);
-            });
+            const preview = await convertImageToJPEG(file);
 
             return {
               id: uuidv4(),
@@ -139,11 +159,7 @@ export default function ImageUploader({
 
       const newImages: UploadedImage[] = await Promise.all(
         filesToProcess.map(async (file) => {
-          const preview = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onload = (e) => resolve(e.target?.result as string);
-            reader.readAsDataURL(file);
-          });
+          const preview = await convertImageToJPEG(file);
 
           const id = uuidv4();
           return {
@@ -269,10 +285,39 @@ export default function ImageUploader({
         return;
       }
 
-      // base64 이미지를 UploadedImage 형식으로 변환
-      const newImages: UploadedImage[] = data.images.map((base64: string) => ({
+      // base64 이미지를 JPEG로 변환 (webp 호환성 문제 해결)
+      const convertedImages = await Promise.all(
+        data.images.map(async (base64: string) => {
+          try {
+            // 이미 base64인 경우 JPEG로 변환
+            return await new Promise<string>((resolve, reject) => {
+              const img = new Image();
+              img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                  reject(new Error('Canvas context not available'));
+                  return;
+                }
+                ctx.drawImage(img, 0, 0);
+                const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+                resolve(jpegDataUrl);
+              };
+              img.onerror = () => reject(new Error('Failed to load image'));
+              img.src = base64;
+            });
+          } catch {
+            // 변환 실패 시 원본 사용
+            return base64;
+          }
+        })
+      );
+
+      const newImages: UploadedImage[] = convertedImages.map((preview) => ({
         id: uuidv4(),
-        preview: base64,
+        preview,
         type: 'garment' as const,
       }));
 
