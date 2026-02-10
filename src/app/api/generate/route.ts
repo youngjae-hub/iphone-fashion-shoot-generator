@@ -151,12 +151,12 @@ export async function POST(request: NextRequest) {
         }
 
         // 2. Virtual Try-On 필수 적용 (의류만 교체)
-        // TODO: 자동 의류 분류 API 연동 (dress, upper_body, lower_body)
+        // TODO: 자동 의류 분류 API 연동 (dresses, upper_body, lower_body)
         const resultImage = await tryOnProvider.tryOn({
           garmentImage,
           modelImage,
           pose: task.pose,
-          category: 'dress', // dress: 원피스/드레스 전체, upper_body: 상의만
+          category: 'upper_body', // upper_body: 상의/아우터, lower_body: 하의, dresses: 원피스/드레스
           seed: settings.seed ? settings.seed + task.shotIndex : undefined, // 각 컷마다 다른 시드
         });
 
