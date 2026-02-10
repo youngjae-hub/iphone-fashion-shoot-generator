@@ -157,13 +157,13 @@ export class IDMVTONProvider implements ITryOnProvider {
         input: {
           crop: false, // Preserve original pose/background (no cropping)
           seed: options.seed !== undefined ? options.seed : 42,
-          steps: 25, // Balanced quality (25 steps = ~30-40초)
+          steps: 35, // Higher quality: 35 steps for sharper, clearer results (~40-50초)
           category: options.category || "upper_body",
           force_dc: false,
           garm_img: options.garmentImage,
           human_img: options.modelImage,
           mask_only: false,
-          garment_des: "fashion garment, high quality fabric, detailed pattern, accurate sleeve length",
+          garment_des: "high quality fashion garment, sharp details, clear fabric texture, accurate sleeve length",
         }
       }
     );
