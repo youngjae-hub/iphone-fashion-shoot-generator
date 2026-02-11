@@ -3,8 +3,8 @@
 // ============================================
 
 // AI Provider Types - 유연한 Provider 교체 지원
-export type ImageGenerationProvider = 'google-imagen' | 'openai-dalle' | 'stability-ai' | 'replicate-flux' | 'huggingface' | 'google-gemini';
-export type TryOnProvider = 'idm-vton' | 'kolors-virtual-tryon' | 'fashn-ai';
+export type ImageGenerationProvider = 'google-imagen' | 'stability-ai' | 'replicate-flux' | 'huggingface' | 'google-gemini';
+export type TryOnProvider = 'idm-vton' | 'kolors-virtual-tryon';
 export type BackgroundProvider = 'google-imagen' | 'stability-ai' | 'replicate-flux' | 'google-gemini';
 
 // Provider Configuration
@@ -100,27 +100,6 @@ export interface TryOnResponse {
   error?: string;
 }
 
-// Background Generation
-export interface BackgroundRequest {
-  style: string;
-  prompt?: string;
-  referenceImages?: string[];
-  provider: BackgroundProvider;
-}
-
-export interface BackgroundResponse {
-  success: boolean;
-  backgroundImage: string;
-  error?: string;
-}
-
-// Model Generation (for consistent model appearance)
-export interface ModelGenerationRequest {
-  style: 'young-korean-female';
-  faceVisible: boolean; // false = 입술 위에서 크롭
-  pose: PoseType;
-  seed?: number;
-}
 
 // App State
 export interface AppState {

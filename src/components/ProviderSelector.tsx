@@ -17,13 +17,11 @@ const IMAGE_GENERATION_OPTIONS: { value: ImageGenerationProvider; label: string;
   { value: 'google-imagen', label: 'Google Imagen', description: '고품질 이미지 생성' },
   { value: 'replicate-flux', label: 'Flux Pro', description: '빠른 생성 속도' },
   { value: 'stability-ai', label: 'Stable Diffusion XL', description: '다양한 스타일 지원' },
-  { value: 'openai-dalle', label: 'DALL-E 3', description: 'OpenAI 이미지 생성' },
 ];
 
 const TRYON_OPTIONS: { value: TryOnProvider; label: string; description: string }[] = [
   { value: 'idm-vton', label: 'IDM-VTON', description: '고품질 가상 피팅' },
   { value: 'kolors-virtual-tryon', label: 'Kolors VTON', description: 'Kwai 가상 피팅' },
-  { value: 'fashn-ai', label: 'FASHN AI', description: '패션 특화 피팅' },
 ];
 
 export default function ProviderSelector({
