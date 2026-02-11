@@ -1,0 +1,21 @@
+{
+  "success": true,
+  "model": {
+    "id": "a122f68b-544d-4345-96d8-c986466ca166",
+    "name": "Lusida Style",
+    "description": "루시다 브랜드 룩북 스타일 - 미니멀 화이트 배경, 자연스러운 포즈, 일상 캐주얼",
+    "status": "training",
+    "trainingImages": [
+      "https://api.replicate.com/v1/files/ZmIyMWVhMjctOWIwZi00OGVkLWE0M2QtZmE4MjNlYTlkODEx"
+    ],
+    "trainingImageCount": 12,
+    "triggerWord": "LUSIDA",
+    "createdAt": 1770804248266,
+    "estimatedCost": 2.66,
+    "modelSlug": "lusida-style",
+    "replicateModelId": "gzv8rsckfnrmw0cw9gmayqcxgg",
+    "replicateDestination": "youngjae-hub/lusida-style"
+  },
+  "trainingId": "gzv8rsckfnrmw0cw9gmayqcxgg",
+  "message": "학습이 시작되었습니다. 약 15-30분 소요됩니다."
+}
