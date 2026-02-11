@@ -25,6 +25,9 @@ export interface PoseConfig {
   enabled: boolean;
 }
 
+// IDM-VTON Garment Categories
+export type VTONCategory = 'upper_body' | 'lower_body' | 'dresses';
+
 // Generation Settings
 export interface GenerationSettings {
   modelStyle: 'iphone-natural' | 'studio' | 'casual';
@@ -34,6 +37,7 @@ export interface GenerationSettings {
   totalShots: number;
   seed?: number;
   negativePrompt?: string;
+  garmentCategory?: VTONCategory; // Virtual Try-On 의류 카테고리
 }
 
 // Garment Category Types

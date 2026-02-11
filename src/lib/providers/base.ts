@@ -2,7 +2,7 @@
 // Base Provider Interface - 유연한 Provider 교체를 위한 추상화
 // ============================================
 
-import { PoseType, GeneratedImage, GenerationSettings } from '@/types';
+import { PoseType, GeneratedImage, GenerationSettings, VTONCategory } from '@/types';
 
 // 이미지 생성 Provider 인터페이스
 export interface IImageGenerationProvider {
@@ -41,7 +41,7 @@ export interface TryOnOptions {
   garmentImage: string; // base64
   modelImage?: string; // base64, optional - 없으면 모델도 생성
   pose: PoseType;
-  category?: 'upper_body' | 'lower_body' | 'dresses' | 'full';
+  category?: VTONCategory; // 의류 카테고리: upper_body, lower_body, dresses
   seed?: number; // 각 컷마다 다른 결과를 위한 시드값
 }
 

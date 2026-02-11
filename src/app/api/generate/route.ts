@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
           garmentImage,
           modelImage,
           pose: task.pose,
-          category: 'upper_body', // upper_body: 상의/아우터, lower_body: 하의, dresses: 원피스/드레스
+          category: settings.garmentCategory || 'dresses', // upper_body: 상의/아우터, lower_body: 하의, dresses: 원피스/드레스
           seed: settings.seed ? settings.seed + task.shotIndex : undefined, // 각 컷마다 다른 시드
         });
 
@@ -289,7 +289,7 @@ export async function PUT(request: NextRequest) {
       garmentImage,
       modelImage,
       pose,
-      category: 'upper_body',
+      category: settings.garmentCategory || 'dresses',
       seed: settings.seed,
     });
 
