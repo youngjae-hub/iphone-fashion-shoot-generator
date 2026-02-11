@@ -1,151 +1,143 @@
 # iPhone Style Fashion Photo Generator
 
-## 프로젝트 개요
-아이폰으로 촬영한 것 같은 패션 룩북 이미지를 AI로 생성하는 웹 애플리케이션
+## 이 앱의 본질 (반드시 읽을 것)
+
+**누끼 제품컷을 넣으면 아이폰 스타일 쇼핑몰 룩북이 나오는 앱.**
+
+핵심 파이프라인:
+```
+누끼 제품컷 업로드 → AI 모델 생성 (얼굴 크롭) → Virtual Try-On 착장 → 다중 포즈 배치 생성
+```
+
+### 이 앱이 잘하는 것
+- 배경 제거된 순수 의류 이미지(누끼) → 룩북 변환
+- AI 모델 생성 + VTON으로 의류 정확 반영
+- 아이폰 촬영 느낌 (자연광, 선명한 디테일, 미니멀 배경)
+- 다중 포즈 배치 생성 (정면/측면/뒷면/연출/디테일)
+- 얼굴 크롭으로 익명성 보장
+
+### 이 앱으로 안 되는 것 (시도하지 말 것)
+- 모델착용컷에서 옷 갈아입히기 (VTON은 "옷 입히기"이지 "옷 갈아입히기"가 아님)
+- 특정 브랜드 스타일 1:1 복제 (LoRA로도 한계)
+- 레퍼런스 이미지의 모델+배경 유지하면서 옷만 교체
+
+이 경계를 벗어나는 기능 요청이 들어오면, 먼저 사용자에게 경계 밖임을 알릴 것.
+
+---
+
+## 개발 로드맵
+
+아래 Phase 순서대로만 작업할 것. Phase 1이 완료되기 전에 Phase 2로 넘어가지 않는다.
+
+### Phase 1: 핵심 품질 안정화 (현재 단계)
+
+| # | 과제 | 현재 문제 | 작업 내용 | 관련 파일 |
+|---|------|-----------|-----------|-----------|
+| 1-1 | 얼굴 크롭 일관성 | 포즈마다 크롭 기준 제각각, 가끔 얼굴 전체 노출 | 프롬프트 표준화 + 생성 후 크롭 후처리(상단 N% 잘라내기) | `src/lib/providers/base.ts:79-96` |
+| 1-2 | garmentCategory 자동 매칭 | 기본값 `'dresses'` 고정, 상의 넣어도 원피스 모드 동작 | classify-garment API 결과를 VTON category에 자동 연결 | `src/app/api/generate/route.ts:159` |
+| 1-3 | 프롬프트 품질 튜닝 | "아이폰 느낌"이 텍스트에만 의존, 불안정 | 기본 Provider(google-gemini) 최적 프롬프트 튜닝 | `src/lib/providers/google-gemini.ts` |
+
+### Phase 2: 결과물 신뢰도 (Phase 1 완료 후)
+
+| # | 과제 | 설명 |
+|---|------|------|
+| 2-1 | A/B 비교 | 같은 입력으로 Provider 2개 결과를 나란히 비교 |
+| 2-2 | 시드 고정 재현성 | 마음에 든 결과를 시드로 저장 → 같은 스타일로 다른 옷 생성 |
+| 2-3 | 품질 자동 체크 | 생성 결과에 얼굴 노출 여부, 의류 반영도 자동 검증 |
+
+### Phase 3: 실무 효율 (Phase 2 완료 후)
+
+| # | 과제 | 설명 |
+|---|------|------|
+| 3-1 | 벌크 처리 | 제품컷 10장 올리면 한 번에 전체 룩북 생성 |
+| 3-2 | 템플릿 저장 | 좋은 설정 저장 → 다음에 바로 적용 |
+| 3-3 | Vercel Pro 마이그레이션 | 60초→300초 타임아웃, steps 올려서 품질 확보 |
+
+### 하지 않는 것 (로드맵에 추가하지 말 것)
+- 크롤링 기능 확장 (깨지기 쉬운 기능)
+- 새로운 AI Provider 추가 (현재 것 안정화가 우선)
+- 리터칭/후보정 기능 (외부 서비스 영역)
+- 브랜드 스타일 이식 기능 (본질 밖)
+
+---
 
 ## 기술 스택
 - **Frontend**: Next.js 16+ (App Router) + React 19+
-- **Styling**: Tailwind CSS v4 (Google AI Studio 스타일 UI)
-- **AI Image Generation**: 유연한 Provider 시스템
-  - Google Imagen API
-  - Replicate Flux Pro
-  - Stability AI (SDXL)
-- **Virtual Try-On**:
-  - IDM-VTON (기본)
-  - Kolors Virtual Try-On (대안)
-
-## 핵심 기능
-
-### 1. 의류 업로드
-- 드래그 앤 드롭 / 클릭 업로드
-- 최대 5장 동시 업로드
-- 이미지 미리보기
-
-### 2. AI 모델 생성
-- 아이폰 촬영 스타일 한국인 여성 모델
-- 얼굴 입술 윗부분 크롭 (익명성 보장)
-- 시드값으로 일관된 스타일 유지 가능
-
-### 3. 배경 생성
-- 미니멀 스튜디오 / 소프트 그라데이션 / 라이프스타일 / 아웃도어
-
-### 4. Virtual Try-On
-- IDM-VTON 또는 Kolors VTON 선택 가능
-- 자연스러운 착장 표현
-
-### 5. 다중 포즈 생성
-- 정면/측면/뒷면/연출/디테일 포즈
-- 포즈당 1~10컷 설정 가능
-- 착장당 최대 50컷 배치 생성
-
-### 6. 유연한 Provider 시스템
-- **언제든 AI 모델 변경 가능**
-- 결과가 마음에 안 들면 다른 Provider로 재생성
-- UI에서 실시간 Provider 전환
+- **Styling**: Tailwind CSS v4
+- **AI Image Generation**: Google Gemini (기본), Flux Pro, SDXL, Google Imagen
+- **Virtual Try-On**: IDM-VTON (기본), Kolors VTON (대안)
+- **Storage**: Vercel KV (히스토리, LoRA 모델)
+- **Logging**: Notion API (생성 로그)
 
 ## 개발 명령어
 
 ```bash
-# 개발 서버 실행
-npm run dev
-
-# 빌드
-npm run build
-
-# 프로덕션 실행
-npm start
-
-# 린트
-npm run lint
+npm run dev      # 개발 서버 (localhost:3000)
+npm run build    # 프로덕션 빌드
+npm start        # 프로덕션 실행
+npm run lint     # ESLint
 ```
 
-## 환경 변수 설정
-
-`.env.example`을 `.env.local`로 복사 후 API 키 입력:
+## 환경 변수 (.env.local)
 
 ```bash
-# 필수 - Replicate API (IDM-VTON, Flux 등)
-REPLICATE_API_TOKEN=your_replicate_token
+# 필수
+REPLICATE_API_TOKEN=...
 
-# 선택 - Google Imagen
-GOOGLE_CLOUD_API_KEY=your_google_api_key
-
-# 선택 - Vertex AI (고급)
-GOOGLE_CLOUD_PROJECT_ID=your_project_id
-GOOGLE_ACCESS_TOKEN=your_access_token
+# 선택
+GOOGLE_CLOUD_API_KEY=...
+NOTION_API_KEY=...
+NOTION_DATABASE_ID=...
 ```
 
-## 디렉토리 구조
+## 디렉토리 구조 (다이어트 후)
 
 ```
 src/
 ├── app/
-│   ├── page.tsx              # 메인 페이지 (Google AI Studio 스타일)
-│   ├── layout.tsx            # 앱 레이아웃
-│   ├── globals.css           # 글로벌 스타일
+│   ├── page.tsx                    # 메인 페이지
+│   ├── layout.tsx                  # 앱 레이아웃
 │   └── api/
-│       ├── generate/route.ts # 이미지 생성 API
-│       └── providers/route.ts # Provider 상태 조회 API
+│       ├── generate/route.ts       # [핵심] 이미지 생성 파이프라인
+│       ├── providers/route.ts      # Provider 가용성 체크
+│       ├── classify-garment/       # 의류 카테고리 자동 분류
+│       ├── lora/                   # LoRA 학습/생성
+│       ├── model-shot/             # AI 모델컷 생성
+│       ├── enhance/                # 이미지 향상
+│       ├── upscale/                # 업스케일
+│       ├── scrape-images/          # URL 이미지 스크래핑
+│       ├── history/                # 세션 히스토리
+│       ├── notion-log/             # Notion 로그
+│       ├── download-zip/           # ZIP 다운로드
+│       ├── preprocess/             # 이미지 전처리
+│       └── auth/                   # 인증 (비활성)
 ├── components/
-│   ├── ImageUploader.tsx     # 드래그앤드롭 업로더
-│   ├── ProviderSelector.tsx  # AI Provider 선택 UI
-│   ├── GenerationSettings.tsx # 생성 설정 패널
-│   ├── ResultGallery.tsx     # 결과물 갤러리 + 다운로드
-│   └── index.ts              # 컴포넌트 re-export
+│   ├── ImageUploader.tsx           # 드래그앤드롭 업로더
+│   ├── GenerationSettings.tsx      # 생성 설정
+│   ├── PromptEditor.tsx            # 프롬프트 커스터마이징
+│   ├── ProviderSelector.tsx        # Provider 선택
+│   ├── ResultGallery.tsx           # 결과 갤러리 + 다운로드
+│   ├── LoRATraining.tsx            # LoRA 학습
+│   ├── ModelShotGenerator.tsx      # AI 모델컷
+│   ├── History.tsx                 # 히스토리
+│   └── HelpTooltip.tsx             # 도움말
 ├── lib/
-│   └── providers/
-│       ├── base.ts           # Provider 인터페이스 정의
-│       ├── replicate.ts      # Replicate Providers (Flux, SDXL, IDM-VTON, Kolors)
-│       ├── google-imagen.ts  # Google Imagen Provider
-│       └── index.ts          # Provider Factory & Registry
+│   ├── providers/
+│   │   ├── base.ts                 # Provider 인터페이스 + 프롬프트 유틸
+│   │   ├── index.ts                # Provider Factory
+│   │   ├── google-gemini.ts        # [기본] Gemini Provider
+│   │   ├── replicate.ts            # Flux, SDXL, IDM-VTON, Kolors
+│   │   ├── google-imagen.ts        # Imagen Provider
+│   │   ├── huggingface.ts          # HuggingFace Provider
+│   │   └── lora-training.ts        # LoRA 학습
+│   └── notion.ts                   # Notion 로깅
 └── types/
-    └── index.ts              # TypeScript 타입 정의
+    └── index.ts                    # 타입 정의 + 설정 상수
 ```
-
-## Provider 시스템
-
-### 이미지 생성 Provider
-| Provider | 설명 | API 키 |
-|----------|------|--------|
-| `google-imagen` | Google Imagen 3.0 | GOOGLE_CLOUD_API_KEY |
-| `replicate-flux` | Flux 1.1 Pro | REPLICATE_API_TOKEN |
-| `stability-ai` | Stable Diffusion XL | REPLICATE_API_TOKEN |
-
-### Virtual Try-On Provider
-| Provider | 설명 | API 키 |
-|----------|------|--------|
-| `idm-vton` | IDM-VTON (고품질) | REPLICATE_API_TOKEN |
-| `kolors-virtual-tryon` | Kwai Kolors VTON | REPLICATE_API_TOKEN |
-
-### Provider 변경 방법
-1. UI의 "AI 모델" 탭에서 선택
-2. 결과 불만족 시 다른 Provider로 재생성 가능
-
-## 포즈 설정
-
-```typescript
-const POSE_CONFIGS = [
-  { type: 'front', label: '정면', promptEn: 'front view, looking forward, standing pose' },
-  { type: 'side', label: '측면', promptEn: 'side profile view, 90 degree angle' },
-  { type: 'back', label: '뒷면', promptEn: 'back view, showing back of outfit' },
-  { type: 'styled', label: '연출', promptEn: 'dynamic pose, natural movement, editorial style' },
-  { type: 'detail', label: '디테일', promptEn: 'close-up shot, fabric texture detail' },
-];
-```
-
-## UI 특징
-- Google AI Studio 스타일 다크 테마
-- 좌측 사이드바: 업로드/설정/Provider 탭
-- 우측 메인: 결과 갤러리
-- 반응형 디자인
 
 ## 코드 컨벤션
 - TypeScript strict mode
 - ESLint + Next.js 규칙
 - 'use client' 컴포넌트 분리
 - API routes는 App Router 방식
-
-## 참고사항
-- 아이폰 촬영 특성: 자연스러운 색감, 선명한 디테일
-- 모델 일관성 유지를 위해 시드값 고정 권장
-- Provider별 결과 차이가 있으므로 여러 Provider 테스트 권장
+- 새 기능 추가 전에 반드시 로드맵 확인 — 로드맵에 없는 기능은 만들지 않는다
