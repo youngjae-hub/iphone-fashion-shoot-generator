@@ -318,3 +318,22 @@ export const DEFAULT_CUSTOM_PROMPT_SETTINGS: CustomPromptSettings = {
   negativePrompt: 'blurry, low quality, distorted, ugly, deformed, bad anatomy, watermark, signature',
   templateId: 'iphone-natural',
 };
+
+// ⭐️ Phase 1-2: GarmentCategory → VTONCategory 매핑 함수
+/**
+ * classify-garment API 결과를 IDM-VTON category로 변환
+ * @param category - classify-garment API가 반환한 카테고리
+ * @returns IDM-VTON에서 사용하는 카테고리
+ */
+export function mapGarmentCategoryToVTON(category: GarmentCategory): VTONCategory {
+  const mapping: Record<GarmentCategory, VTONCategory> = {
+    top: 'upper_body',
+    outer: 'upper_body',
+    bottom: 'lower_body',
+    dress: 'dresses',
+    accessory: 'upper_body', // 액세서리는 상의로 기본 처리
+    unknown: 'dresses', // 알 수 없는 경우 원피스로 기본 처리 (가장 안전)
+  };
+
+  return mapping[category];
+}

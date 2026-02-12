@@ -14,6 +14,9 @@ import {
   CustomPromptSettings,
   DEFAULT_PROMPT_TEMPLATES,
   STYLE_MODIFIERS,
+  VTONCategory,
+  GarmentCategory,
+  mapGarmentCategoryToVTON,
 } from '@/types';
 import { logGenerationBatch, type GenerationLogEntry } from '@/lib/notion';
 
@@ -106,6 +109,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // ⭐️ Phase 1-2: 의류 카테고리 자동 분류
+    let vtonCategory: VTONCategory = settings.garmentCategory || 'dresses'; // 기본값
+
+    if (!settings.garmentCategory) {
+      // 사용자가 카테고리를 지정하지 않은 경우 자동 분류
+      try {
+        const classifyResponse = await fetch(`${request.nextUrl.origin}/api/classify-garment`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: garmentImage }),
+        });
+
+        if (classifyResponse.ok) {
+          const classifyData = await classifyResponse.json();
+          if (classifyData.success && classifyData.category) {
+            const detectedCategory = classifyData.category as GarmentCategory;
+            vtonCategory = mapGarmentCategoryToVTON(detectedCategory);
+            console.log(`✅ Auto-classified garment: ${detectedCategory} → VTON: ${vtonCategory} (confidence: ${classifyData.confidence})`);
+          }
+        } else {
+          console.warn('⚠️ Garment classification failed, using default category');
+        }
+      } catch (classifyError) {
+        console.warn('⚠️ Garment classification error:', classifyError);
+        // 분류 실패 시 기본값 사용
+      }
+    } else {
+      console.log(`Using user-specified category: ${vtonCategory}`);
+    }
+
     // 프롬프트 설정에서 최종 프롬프트 빌드
     const { basePrompt, negativePrompt } = buildPromptFromSettings(promptSettings);
 
@@ -151,12 +184,12 @@ export async function POST(request: NextRequest) {
         }
 
         // 2. Virtual Try-On 필수 적용 (의류만 교체)
-        // TODO: 자동 의류 분류 API 연동 (dresses, upper_body, lower_body)
+        // ⭐️ Phase 1-2: 자동 분류된 카테고리 사용
         const resultImage = await tryOnProvider.tryOn({
           garmentImage,
           modelImage,
           pose: task.pose,
-          category: settings.garmentCategory || 'dresses', // upper_body: 상의/아우터, lower_body: 하의, dresses: 원피스/드레스
+          category: vtonCategory, // 자동 분류 또는 사용자 지정 카테고리
           seed: settings.seed ? settings.seed + task.shotIndex : undefined, // 각 컷마다 다른 시드
         });
 
@@ -276,6 +309,28 @@ export async function PUT(request: NextRequest) {
     const imageProvider = getImageGenerationProvider(providers.imageGeneration);
     const tryOnProvider = getTryOnProvider(providers.tryOn);
 
+    // ⭐️ Phase 1-2: 재생성 시에도 자동 분류 적용
+    let vtonCategory: VTONCategory = settings.garmentCategory || 'dresses';
+
+    if (!settings.garmentCategory) {
+      try {
+        const classifyResponse = await fetch(`${request.nextUrl.origin}/api/classify-garment`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: garmentImage }),
+        });
+
+        if (classifyResponse.ok) {
+          const classifyData = await classifyResponse.json();
+          if (classifyData.success && classifyData.category) {
+            vtonCategory = mapGarmentCategoryToVTON(classifyData.category as GarmentCategory);
+          }
+        }
+      } catch (classifyError) {
+        console.warn('⚠️ Garment classification error in regeneration:', classifyError);
+      }
+    }
+
     const modelImage = await imageProvider.generateModelImage({
       pose,
       style: settings.modelStyle,
@@ -289,7 +344,7 @@ export async function PUT(request: NextRequest) {
       garmentImage,
       modelImage,
       pose,
-      category: settings.garmentCategory || 'dresses',
+      category: vtonCategory,
       seed: settings.seed,
     });
 

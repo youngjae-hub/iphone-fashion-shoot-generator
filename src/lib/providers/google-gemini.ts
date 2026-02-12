@@ -8,29 +8,24 @@ import {
   BackgroundOptions,
 } from './base';
 
-// 에이블리/지그재그 스타일 프롬프트 생성
+// ⭐️ Phase 1-3: 간결한 에이블리/지그재그 스타일 프롬프트
 function generateAblelyStylePrompt(pose: string, garmentDescription?: string): string {
   const stylePrompt = `
-    Korean online shopping mall style photography,
-    iPhone camera quality, natural daylight,
-    clean simple background (plain wall or neutral backdrop),
-    young Korean female model in her early 20s,
-    face cropped above lips showing only chin and lips,
-    relaxed natural pose like friend took the photo,
-    natural color grading, realistic skin tones,
-    not too perfect - authentic social media aesthetic,
-    WIDE SHOT with generous framing - shot from distance,
-    full body shot with plenty of space around the model,
-    include environment and surroundings in frame,
-    model should occupy about 60-70% of the frame height
+    Korean fashion lookbook photography,
+    iPhone quality with natural daylight,
+    clean minimal background,
+    young Korean woman model in early 20s,
+    natural relaxed posture,
+    authentic real-photo aesthetic,
+    sharp details and true-to-life colors
   `.trim().replace(/\s+/g, ' ');
 
   const posePrompts: Record<string, string> = {
-    front: 'wide full body shot, standing casually facing camera, weight on one leg, natural stance, shot from distance with room around model',
-    side: 'wide full body shot from side angle, looking away from camera, candid feel, plenty of negative space around model',
-    back: 'wide full body shot from back view, looking over shoulder slightly, showing outfit back, shot from distance',
-    styled: 'wide shot mid-movement pose, walking or adjusting clothes, lifestyle moment, full body visible with environment',
-    detail: '3/4 body shot focusing on outfit details, fabric texture, accessories, still showing most of the outfit',
+    front: 'full body standing naturally, weight on one leg',
+    side: 'full body side view, candid walking moment',
+    back: 'full body back view, looking over shoulder',
+    styled: 'dynamic lifestyle pose with natural movement',
+    detail: 'upper body focusing on outfit details and fabric',
   };
 
   const poseStr = posePrompts[pose] || posePrompts.front;
@@ -51,13 +46,13 @@ export class GoogleGeminiImageProvider implements IImageGenerationProvider {
   }
 
   async generateModelImage(options: ModelGenerationOptions): Promise<string> {
-    // 포즈별 상세 프롬프트 - 넓은 프레이밍 강조
+    // ⭐️ Phase 1-3: 포즈별 프롬프트 간결화 및 명확화
     const poseDescriptions: Record<string, string> = {
-      front: 'WIDE FULL BODY SHOT from distance, standing casually facing camera, weight shifted to one leg, hands relaxed at sides or one hand touching hair, natural smile with chin down, plenty of space around model showing environment',
-      side: 'WIDE FULL BODY SHOT, side profile walking pose, mid-stride, looking slightly away from camera, candid street style moment, shot from distance with generous framing',
-      back: 'WIDE FULL BODY SHOT, back view showing outfit from behind, head turned slightly over shoulder, hair flowing naturally, include surroundings in frame',
-      styled: 'WIDE SHOT lifestyle action pose - sitting on wooden chair with legs crossed, OR twirling/spinning making skirt flow, OR adjusting collar/sleeves, OR hand in pocket leaning against wall, full body visible with environment',
-      detail: '3/4 BODY SHOT with comfortable framing, focusing on outfit details and fabric texture, hands visible interacting with clothing, not too tight',
+      front: 'Full body shot, standing naturally, weight on one leg, relaxed posture',
+      side: 'Full body side profile, mid-stride walking pose, candid moment',
+      back: 'Full body back view, slightly looking over shoulder',
+      styled: 'Dynamic lifestyle pose - sitting, adjusting clothes, or natural movement',
+      detail: 'Upper body focused shot showing fabric details and accessories',
     };
 
     const posePrompt = poseDescriptions[options.pose] || poseDescriptions.front;
@@ -70,56 +65,36 @@ export class GoogleGeminiImageProvider implements IImageGenerationProvider {
     const backgroundSpotCount = options.backgroundSpotImages?.length || 0;
     const hasBackgroundSpot = backgroundSpotCount > 0;
 
-    // 에이블리/지그재그 스타일 프롬프트 생성
+    // ⭐️ Phase 1-3: 프롬프트 간결화 및 아이폰 스타일 핵심 집중
     const textPrompt = options.garmentImage
-      ? `Generate a fashion photo ${hasStyleRef ? 'that matches the EXACT STYLE of the reference images' : 'in Korean online shopping mall (Ably/Zigzag) style'}.
+      ? `Generate a high-quality fashion lookbook photo ${hasStyleRef ? 'matching the EXACT style of the reference images' : 'with iPhone photography aesthetic'}.
 
-${hasStyleRef ? `CRITICAL - STYLE REFERENCE (${styleRefCount} images provided):
-The first ${styleRefCount} image(s) show the EXACT photography style you must replicate:
-- Copy the lighting, color grading, background style from these references
-- Match the camera angle and composition
-- Replicate the authentic, slightly imperfect feel
-- Same level of image noise/grain if present
-- Blend the best elements from all reference images
-` : `STYLE REQUIREMENTS:
-- iPhone camera quality, natural daylight from window
-- Natural color grading, realistic skin tones, no color cast
-${hasBackgroundSpot ? '' : '- Clean simple background: plain wall, neutral backdrop, or minimal setting'}
-- Authentic social media aesthetic, not too perfect
-- Add slight motion blur or soft focus for realism
-- Include natural shadows and lighting inconsistencies
+${hasStyleRef ? `STYLE REFERENCE (${styleRefCount} images):
+- Match the lighting, color grading, and composition from reference images
+- Replicate the overall mood and aesthetic
+- Blend best elements from all references
+` : `CORE STYLE - iPhone Photography:
+- Natural daylight, soft window lighting
+- Sharp focus with natural depth of field
+- True-to-life colors, no heavy filters
+- Clean composition
+${hasBackgroundSpot ? '' : '- Simple neutral background'}
 `}
-${hasBackgroundSpot ? `CRITICAL - BACKGROUND/LOCATION REFERENCE (${backgroundSpotCount} images provided):
-The background/location spot images show the EXACT location where the photo should be taken:
-- Use the EXACT same background location shown in the reference images
-- Match the environment, furniture, walls, floors, and decorations from the reference
-- Maintain the lighting conditions and atmosphere of the location
-- Place the model naturally in this environment as if she was actually photographed there
-- Keep the background recognizable but with the model as the focus
-- The final image should look like it was shot at this exact location
+${hasBackgroundSpot ? `LOCATION (${backgroundSpotCount} reference images):
+- Use the exact location/background shown in references
+- Match environment, furniture, and lighting
+- Model naturally placed in this setting
 ` : ''}
-FRAMING REQUIREMENTS (CRITICAL):
-- WIDE SHOT composition - shoot from distance
-- Full body visible with generous space around the model
-- Model should occupy about 60-70% of the frame height, NOT filling the entire frame
-- Include environment and surroundings in the shot
-- Avoid tight cropping - leave breathing room on all sides
-- The viewer should see the full outfit from head to toe with space to spare
-${options.customPrompt ? `\nADDITIONAL STYLE:\n${options.customPrompt}\n` : ''}
-MODEL REQUIREMENTS:
-- Korean female model in early 20s
-- Face cropped above lips (show only chin and lips for anonymity)
-- Natural relaxed expression, not posed
+${options.customPrompt ? `CUSTOM STYLE: ${options.customPrompt}\n` : ''}
+MODEL: Korean woman in early 20s, natural expression
 
 POSE: ${posePrompt}
 
-CRITICAL - GARMENT:
-The model MUST wear the EXACT garment shown in the ${hasStyleRef || hasBackgroundSpot ? 'garment' : ''} reference image.
-- Same pattern, same colors, same fabric texture
-- Natural fabric draping and wrinkles
-- Do NOT change or interpret the garment differently
+GARMENT: Model must wear the EXACT garment from reference image
+- Accurate colors, patterns, and fabric texture
+- Natural draping and fit
 
-Make it look like a real photo taken by a friend, not AI-generated.`
+Output: Professional fashion photo that looks authentically shot, not AI-generated.`
       : generateAblelyStylePrompt(options.pose, options.style);
 
     // 요청 body 구성
