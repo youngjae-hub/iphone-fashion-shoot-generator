@@ -105,24 +105,40 @@ export async function POST(request: NextRequest) {
 
 // 캡션에서 의류 카테고리 추출
 function extractCategory(caption: string): { type: GarmentCategory; confidence: number } {
-  // 카테고리별 키워드
-  const keywords: Record<GarmentCategory, string[]> = {
-    top: ['shirt', 'blouse', 't-shirt', 'tee', 'top', 'sweater', 'hoodie', 'polo', 'tank'],
-    bottom: ['pants', 'jeans', 'skirt', 'shorts', 'trousers', 'leggings', 'slacks'],
-    dress: ['dress', 'gown', 'one-piece', 'onepiece', 'romper', 'jumpsuit'],
-    outer: ['jacket', 'coat', 'cardigan', 'blazer', 'vest', 'parka', 'windbreaker', 'overcoat'],
-    accessory: ['bag', 'hat', 'cap', 'scarf', 'belt', 'watch', 'jewelry', 'sunglasses', 'shoes'],
-    unknown: [],
+  // 카테고리별 키워드 및 가중치
+  const keywords: Record<GarmentCategory, { words: string[]; priority: number }> = {
+    dress: {
+      words: ['dress', 'gown', 'one-piece', 'onepiece', 'romper', 'jumpsuit', 'maxi', 'midi', 'mini dress'],
+      priority: 3 // 최우선
+    },
+    top: {
+      words: ['shirt', 'blouse', 't-shirt', 'tee', 'top', 'sweater', 'hoodie', 'polo', 'tank'],
+      priority: 2
+    },
+    bottom: {
+      words: ['pants', 'jeans', 'skirt', 'shorts', 'trousers', 'leggings', 'slacks'],
+      priority: 2
+    },
+    outer: {
+      words: ['jacket', 'coat', 'cardigan', 'blazer', 'vest', 'parka', 'windbreaker', 'overcoat'],
+      priority: 2
+    },
+    accessory: {
+      words: ['bag', 'purse', 'hat', 'cap', 'scarf', 'belt', 'watch', 'jewelry', 'sunglasses', 'necklace', 'bracelet'],
+      priority: 1 // 최후순위 (shoes 제거 - 의류 사진에 자주 등장)
+    },
+    unknown: { words: [], priority: 0 },
   };
 
   let bestMatch: GarmentCategory = 'unknown';
   let maxScore = 0;
+  let bestPriority = 0;
 
-  for (const [category, words] of Object.entries(keywords)) {
+  for (const [category, config] of Object.entries(keywords)) {
     if (category === 'unknown') continue;
 
     let score = 0;
-    for (const word of words) {
+    for (const word of config.words) {
       if (caption.includes(word)) {
         score += 1;
         // 정확한 단어 매칭에 가중치
@@ -132,14 +148,23 @@ function extractCategory(caption: string): { type: GarmentCategory; confidence: 
       }
     }
 
-    if (score > maxScore) {
+    // 우선순위 적용: 점수가 같으면 우선순위가 높은 것 선택
+    if (score > maxScore || (score === maxScore && config.priority > bestPriority)) {
       maxScore = score;
       bestMatch = category as GarmentCategory;
+      bestPriority = config.priority;
     }
   }
 
   // 신뢰도 계산 (0-1)
-  const confidence = maxScore > 0 ? Math.min(maxScore / 2, 1) : 0;
+  let confidence = maxScore > 0 ? Math.min(maxScore / 2, 1) : 0;
+
+  // ⚠️ 신뢰도 검증: accessory나 unknown으로 분류되었고 신뢰도가 낮으면 dress로 기본 설정
+  if ((bestMatch === 'accessory' || bestMatch === 'unknown') && confidence < 0.5) {
+    console.warn(`⚠️ Low confidence classification: ${bestMatch} (${confidence}), defaulting to 'dress'`);
+    bestMatch = 'dress';
+    confidence = 0.3; // 낮은 신뢰도 표시
+  }
 
   return { type: bestMatch, confidence };
 }
