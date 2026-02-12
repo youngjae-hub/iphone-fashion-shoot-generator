@@ -151,6 +151,13 @@ export default function Home() {
           setGeneratedImages((prev) => [...data.images, ...prev]);
           // 히스토리 저장
           saveToHistory(data.images);
+
+          // ⚠️ 일부 포즈 실패 시 경고 표시
+          if (data.warnings && data.warnings.length > 0) {
+            const failedCount = data.warnings.length;
+            const successCount = data.images.length;
+            setError(`⚠️ ${successCount}개 생성 성공, ${failedCount}개 실패:\n${data.warnings.join('\n')}`);
+          }
         } else {
           setError(data.error || '이미지 생성에 실패했습니다.');
         }
