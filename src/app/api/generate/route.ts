@@ -7,6 +7,7 @@ import {
 import {
   IImageGenerationProvider,
   ITryOnProvider,
+  cropTopForPrivacy,
 } from '@/lib/providers/base';
 import {
   GenerationRequest,
@@ -189,6 +190,16 @@ export async function POST(request: NextRequest) {
             backgroundSpotImages, // 배경 스팟 이미지들 전달
             customPrompt: basePrompt, // 커스텀 프롬프트 전달
           });
+        }
+
+        // ⭐️ Phase 1-1: 얼굴 크롭 (프롬프트 의존 X, 후처리로 확실히 제거)
+        try {
+          console.log(`Applying face crop to model image for ${task.pose}...`);
+          modelImage = await cropTopForPrivacy(modelImage, 18); // 상단 18% 크롭
+          console.log(`✅ Face cropped successfully for ${task.pose}`);
+        } catch (cropError) {
+          console.warn(`⚠️ Face crop failed for ${task.pose}:`, cropError);
+          // 크롭 실패 시 원본 사용 (cropTopForPrivacy가 이미 원본 반환)
         }
 
         // 2. Virtual Try-On 필수 적용 (의류만 교체)
