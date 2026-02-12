@@ -87,6 +87,11 @@ ${hasBackgroundSpot ? `LOCATION (${backgroundSpotCount} reference images):
 ` : ''}
 ${options.customPrompt ? `CUSTOM STYLE: ${options.customPrompt}\n` : ''}
 MODEL: Korean woman in early 20s, natural expression
+⚠️ CRITICAL - FACE CROPPING FOR PRIVACY:
+- Face MUST be cropped above lips
+- Show ONLY chin and lower jaw
+- Eyes and nose must NOT be visible
+- Tight head cropping for anonymity
 
 POSE: ${posePrompt}
 
