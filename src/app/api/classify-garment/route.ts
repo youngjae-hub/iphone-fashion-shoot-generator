@@ -75,10 +75,11 @@ export async function POST(request: NextRequest) {
     );
 
     const caption = typeof output === 'string' ? output : String(output);
-    console.log('BLIP caption:', caption);
+    console.log('🔍 BLIP-2 Caption:', caption);
 
     // 캡션에서 카테고리 추출
     const category = extractCategory(caption.toLowerCase());
+    console.log(`📊 Classification: ${category.type} (confidence: ${(category.confidence * 100).toFixed(1)}%)`);
     const details = extractDetails(caption.toLowerCase());
 
     const response: ClassifyResponse = {
