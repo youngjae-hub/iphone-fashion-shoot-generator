@@ -135,6 +135,7 @@ export default function Home() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             garmentImage,
+            garmentCategory: uploadedImages[0].category, // ⭐️ 사용자가 선택한 카테고리 전달
             styleReferenceImages: styleReferenceImages.map((img) => img.preview),
             backgroundSpotImages: backgroundSpotImages.map((img) => img.preview),
             poses: settings.poses,

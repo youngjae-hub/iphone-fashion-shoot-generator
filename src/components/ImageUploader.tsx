@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { UploadedImage, GarmentCategory } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -78,9 +78,24 @@ export default function ImageUploader({
   const [urlInput, setUrlInput] = useState('');
   const [isLoadingUrl, setIsLoadingUrl] = useState(false);
   const [urlError, setUrlError] = useState('');
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const styleInputRef = useRef<HTMLInputElement>(null);
   const backgroundSpotInputRef = useRef<HTMLInputElement>(null);
+
+  // 카테고리 드롭다운 외부 클릭 시 닫기
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (editingCategoryId) {
+        setEditingCategoryId(null);
+      }
+    };
+
+    if (editingCategoryId) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [editingCategoryId]);
 
   // AI 분류 호출
   const classifyGarment = async (imageId: string, imageBase64: string) => {
@@ -104,6 +119,14 @@ export default function ImageUploader({
         return next;
       });
     }
+  };
+
+  // 수동 카테고리 변경
+  const handleManualCategoryChange = (imageId: string, category: GarmentCategory) => {
+    if (onCategoryUpdate) {
+      onCategoryUpdate(imageId, category, 1.0); // 수동 선택은 신뢰도 100%
+    }
+    setEditingCategoryId(null);
   };
 
   const processFiles = useCallback(
@@ -478,7 +501,7 @@ export default function ImageUploader({
                 </button>
               </div>
 
-              {/* Category badge */}
+              {/* Category badge with selector */}
               <div className="absolute top-2 left-2 flex gap-1">
                 {classifyingIds.has(image.id) ? (
                   <span className="provider-badge flex items-center gap-1">
@@ -488,18 +511,65 @@ export default function ImageUploader({
                     </svg>
                     분류중
                   </span>
-                ) : image.category ? (
-                  <span className={`provider-badge ${
-                    image.category === 'top' ? 'bg-blue-500/20 text-blue-400' :
-                    image.category === 'bottom' ? 'bg-green-500/20 text-green-400' :
-                    image.category === 'dress' ? 'bg-pink-500/20 text-pink-400' :
-                    image.category === 'outer' ? 'bg-orange-500/20 text-orange-400' :
-                    ''
-                  }`}>
-                    {CATEGORY_LABELS[image.category]}
-                  </span>
                 ) : (
-                  <span className="provider-badge">의류</span>
+                  <div className="relative">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingCategoryId(editingCategoryId === image.id ? null : image.id);
+                      }}
+                      className={`provider-badge cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-1 ${
+                        image.category === 'top' ? 'bg-blue-500/20 text-blue-400' :
+                        image.category === 'bottom' ? 'bg-green-500/20 text-green-400' :
+                        image.category === 'dress' ? 'bg-pink-500/20 text-pink-400' :
+                        image.category === 'outer' ? 'bg-orange-500/20 text-orange-400' :
+                        'bg-gray-500/20 text-gray-400'
+                      }`}
+                    >
+                      {image.category ? CATEGORY_LABELS[image.category] : '선택'}
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+
+                    {/* Category dropdown */}
+                    {editingCategoryId === image.id && (
+                      <div
+                        className="absolute top-full left-0 mt-1 z-10 rounded-lg shadow-lg overflow-hidden"
+                        style={{ background: 'var(--background-secondary)', border: '1px solid var(--border)' }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {(['top', 'bottom', 'dress', 'outer'] as GarmentCategory[]).map((cat) => (
+                          <button
+                            key={cat}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleManualCategoryChange(image.id, cat);
+                            }}
+                            className={`w-full px-3 py-2 text-left text-sm transition-colors whitespace-nowrap ${
+                              image.category === cat ? 'font-medium' : ''
+                            }`}
+                            style={{
+                              background: image.category === cat ? 'var(--accent-light)' : 'transparent',
+                              color: image.category === cat ? 'var(--accent)' : 'var(--foreground)',
+                            }}
+                            onMouseEnter={(e) => {
+                              if (image.category !== cat) {
+                                e.currentTarget.style.background = 'var(--background-tertiary)';
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (image.category !== cat) {
+                                e.currentTarget.style.background = 'transparent';
+                              }
+                            }}
+                          >
+                            {CATEGORY_LABELS[cat]}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </div>

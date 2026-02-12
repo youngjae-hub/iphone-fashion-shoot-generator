@@ -63,7 +63,7 @@ function buildPromptFromSettings(promptSettings?: CustomPromptSettings): { baseP
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { garmentImage, styleReferenceImages, backgroundSpotImages, poses, settings, providers, promptSettings } = body as GenerationRequest & { styleReferenceImages?: string[]; backgroundSpotImages?: string[]; promptSettings?: CustomPromptSettings };
+    const { garmentImage, garmentCategory, styleReferenceImages, backgroundSpotImages, poses, settings, providers, promptSettings } = body as GenerationRequest & { garmentCategory?: GarmentCategory; styleReferenceImages?: string[]; backgroundSpotImages?: string[]; promptSettings?: CustomPromptSettings };
 
     if (!garmentImage) {
       return NextResponse.json(
@@ -109,12 +109,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ⭐️ Phase 1-2: 의류 카테고리 자동 분류
-    let vtonCategory: VTONCategory = settings.garmentCategory || 'dresses'; // 기본값
+    // ⭐️ Phase 1-2: 의류 카테고리 처리 (사용자 선택 우선, BLIP-2는 fallback)
+    let vtonCategory: VTONCategory = 'dresses'; // 기본값
 
-    if (!settings.garmentCategory) {
-      // 사용자가 카테고리를 지정하지 않은 경우 자동 분류
+    if (garmentCategory) {
+      // 사용자가 UI에서 선택한 카테고리 사용 (최우선)
+      vtonCategory = mapGarmentCategoryToVTON(garmentCategory);
+      console.log(`👤 User selected category: ${garmentCategory} → VTON: ${vtonCategory}`);
+    } else if (settings.garmentCategory) {
+      // GenerationSettings에서 지정한 경우 (하위 호환)
+      vtonCategory = settings.garmentCategory;
+      console.log(`⚙️ Settings category: ${vtonCategory}`);
+    } else {
+      // 사용자가 선택하지 않은 경우에만 BLIP-2 자동 분류 (fallback)
       try {
+        console.log('🤖 Attempting auto-classification with BLIP-2 (user did not select category)...');
         const classifyResponse = await fetch(`${request.nextUrl.origin}/api/classify-garment`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -126,17 +135,16 @@ export async function POST(request: NextRequest) {
           if (classifyData.success && classifyData.category) {
             const detectedCategory = classifyData.category as GarmentCategory;
             vtonCategory = mapGarmentCategoryToVTON(detectedCategory);
-            console.log(`✅ Auto-classified garment: ${detectedCategory} → VTON: ${vtonCategory} (confidence: ${classifyData.confidence})`);
+            console.log(`✅ Auto-classified: ${detectedCategory} → VTON: ${vtonCategory} (confidence: ${classifyData.confidence})`);
           }
         } else {
-          console.warn('⚠️ Garment classification failed, using default category');
+          console.warn('⚠️ Garment classification failed, using default category: dresses');
         }
       } catch (classifyError) {
         console.warn('⚠️ Garment classification error:', classifyError);
-        // 분류 실패 시 기본값 사용
+        console.log('Using default category: dresses');
+        // 분류 실패 시 기본값 유지
       }
-    } else {
-      console.log(`Using user-specified category: ${vtonCategory}`);
     }
 
     // 프롬프트 설정에서 최종 프롬프트 빌드
