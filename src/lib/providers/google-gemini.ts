@@ -41,7 +41,6 @@ export class GoogleGeminiImageProvider implements IImageGenerationProvider {
           ],
           generationConfig: {
             responseModalities: ['image', 'text'],
-            responseMimeType: 'image/jpeg',
           },
         }),
       }
