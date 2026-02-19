@@ -75,35 +75,33 @@ export class ProviderRegistry {
   }
 }
 
-// 아이폰 스타일 프롬프트 생성 유틸리티
+// 아이폰 스타일 프롬프트 생성 유틸리티 (1월 20일 버전 - 단순화)
 export function generateIPhoneStylePrompt(pose: PoseType, additionalPrompt?: string): string {
   const basePrompt = `
     iPhone photography style, natural lighting,
-    young Korean female model,
+    young Korean female model, face cropped above lips for anonymity,
     high-quality fashion lookbook, sharp details,
     natural skin texture, subtle color grading,
     professional fashion photography
   `.trim().replace(/\s+/g, ' ');
 
-  // ⭐️ Phase 1-1: 얼굴 크롭 일관성 - 모든 포즈에서 동일한 크롭 기준 적용
-  const faceCropStandard = 'CRITICAL FOR ANONYMITY: face must be cropped above lips, showing only chin and lower jaw, eyes and nose must NOT be visible in frame, tight head cropping for privacy';
-
   const posePrompts: Record<PoseType, string> = {
-    front: `medium close-up shot from chest to knees, standing casually facing camera, weight on one leg, ${faceCropStandard}, fashion lookbook style`,
-    side: `full body shot from head to feet, side profile angle, looking away naturally, candid walking moment, ${faceCropStandard}, generous framing with environment visible`,
-    back: `full body shot from head to feet, back view, slightly looking over shoulder, ${faceCropStandard}, showing outfit back details`,
-    styled: `medium shot from neck to knees, sitting on chair or adjusting clothes or hand in pocket, ${faceCropStandard}, relaxed editorial feel with natural movement`,
-    detail: `3/4 body shot with comfortable framing, focusing on outfit details, fabric texture, accessories, ${faceCropStandard}`,
+    front: 'front view, standing pose, looking at camera direction',
+    side: 'side profile, 90 degree angle, elegant silhouette',
+    back: 'back view, showing garment back details',
+    styled: 'dynamic editorial pose, natural movement, lifestyle feel',
+    detail: 'close-up detail shot, fabric texture, craftsmanship focus',
   };
 
   return `${basePrompt}, ${posePrompts[pose]}${additionalPrompt ? `, ${additionalPrompt}` : ''}`;
 }
 
-// 네거티브 프롬프트 기본값
+// 네거티브 프롬프트 기본값 (1월 20일 버전)
 export const DEFAULT_NEGATIVE_PROMPT = `
   low quality, blurry, distorted, deformed, ugly,
   bad anatomy, bad proportions, extra limbs,
   watermark, signature, text, logo,
+  full face visible, face showing, eyes visible,
   oversaturated, artificial lighting
 `.trim().replace(/\s+/g, ' ');
 
