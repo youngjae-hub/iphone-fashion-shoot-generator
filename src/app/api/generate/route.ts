@@ -7,7 +7,7 @@ import {
 import {
   IImageGenerationProvider,
   ITryOnProvider,
-  cropTopForPrivacy,
+  smartFaceCrop,
 } from '@/lib/providers/base';
 import {
   GenerationRequest,
@@ -203,14 +203,14 @@ export async function POST(request: NextRequest) {
           seed: settings.seed ? settings.seed + task.shotIndex : undefined, // 각 컷마다 다른 시드
         });
 
-        // ⭐️ Phase 1-1: 얼굴 크롭 (VTON 후에 적용 - 신체 감지 문제 방지)
+        // ⭐️ 얼굴 인식 기반 스마트 크롭 (입술 위치에서 자르기)
         try {
-          console.log(`Applying face crop to VTON result for ${task.pose}...`);
-          resultImage = await cropTopForPrivacy(resultImage, 25); // 상단 25% 크롭 (얼굴 완전 제거)
-          console.log(`✅ Face cropped successfully for ${task.pose}`);
+          console.log(`Applying smart face crop to VTON result for ${task.pose}...`);
+          resultImage = await smartFaceCrop(resultImage);
+          console.log(`✅ Smart face crop completed for ${task.pose}`);
         } catch (cropError) {
           console.warn(`⚠️ Face crop failed for ${task.pose}:`, cropError);
-          // 크롭 실패 시 원본 사용 (cropTopForPrivacy가 이미 원본 반환)
+          // 크롭 실패 시 원본 사용
         }
 
         return {

@@ -105,14 +105,128 @@ export const DEFAULT_NEGATIVE_PROMPT = `
   oversaturated, artificial lighting
 `.trim().replace(/\s+/g, ' ');
 
-// ⭐️ Phase 1-1: 얼굴 크롭 후처리 - 상단 일정 비율 자르기
+// ⭐️ 얼굴 인식 기반 스마트 크롭 (Google Vision API 사용)
+/**
+ * 얼굴을 인식하여 입술 위치에서 크롭
+ * @param imageInput - base64 이미지
+ * @returns 크롭된 base64 이미지
+ */
+export async function smartFaceCrop(imageInput: string): Promise<string> {
+  if (typeof window !== 'undefined') {
+    // 브라우저 환경에서는 fallback으로 고정 비율 크롭
+    return cropTopForPrivacy(imageInput, 20);
+  }
+
+  const apiKey = process.env.GOOGLE_CLOUD_API_KEY;
+  if (!apiKey) {
+    console.warn('Google Cloud API key not found, falling back to fixed crop');
+    return cropTopForPrivacy(imageInput, 20);
+  }
+
+  try {
+    const sharp = require('sharp');
+
+    // base64 데이터 추출
+    const base64Data = imageInput.replace(/^data:image\/\w+;base64,/, '');
+    const imageBuffer = Buffer.from(base64Data, 'base64');
+
+    // 이미지 메타데이터
+    const metadata = await sharp(imageBuffer).metadata();
+    const { width, height } = metadata;
+
+    if (!width || !height) {
+      return cropTopForPrivacy(imageInput, 20);
+    }
+
+    // Google Vision API로 얼굴 감지
+    const visionResponse = await fetch(
+      `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requests: [{
+            image: { content: base64Data },
+            features: [{ type: 'FACE_DETECTION', maxResults: 1 }]
+          }]
+        })
+      }
+    );
+
+    if (!visionResponse.ok) {
+      console.warn('Vision API failed, falling back to fixed crop');
+      return cropTopForPrivacy(imageInput, 20);
+    }
+
+    const visionData = await visionResponse.json();
+    const faces = visionData.responses?.[0]?.faceAnnotations;
+
+    if (!faces || faces.length === 0) {
+      console.log('No face detected, using fixed crop');
+      return cropTopForPrivacy(imageInput, 20);
+    }
+
+    // 첫 번째 얼굴의 랜드마크에서 입술 하단 위치 찾기
+    const face = faces[0];
+    const landmarks = face.landmarks || [];
+
+    // LOWER_LIP 또는 MOUTH_BOTTOM 랜드마크 찾기
+    let lipY = 0;
+    for (const landmark of landmarks) {
+      if (landmark.type === 'LOWER_LIP' || landmark.type === 'MOUTH_BOTTOM') {
+        lipY = Math.max(lipY, landmark.position.y);
+      }
+    }
+
+    // 랜드마크가 없으면 boundingPoly 사용
+    if (lipY === 0 && face.boundingPoly?.vertices) {
+      const vertices = face.boundingPoly.vertices;
+      const faceBottom = Math.max(...vertices.map((v: {y?: number}) => v.y || 0));
+      const faceTop = Math.min(...vertices.map((v: {y?: number}) => v.y || height));
+      // 얼굴 영역의 70% 지점 (대략 입술 위치)
+      lipY = faceTop + (faceBottom - faceTop) * 0.7;
+    }
+
+    if (lipY === 0) {
+      return cropTopForPrivacy(imageInput, 20);
+    }
+
+    // 입술 위치에서 약간 위로 크롭 (입술 일부만 보이게)
+    const cropY = Math.floor(lipY - 10); // 입술 위 10px 정도
+    const newHeight = height - cropY;
+
+    if (newHeight < height * 0.5) {
+      // 너무 많이 잘리면 fallback
+      console.log('Crop too aggressive, using fixed crop');
+      return cropTopForPrivacy(imageInput, 25);
+    }
+
+    const croppedBuffer = await sharp(imageBuffer)
+      .extract({
+        left: 0,
+        top: cropY,
+        width: width,
+        height: newHeight,
+      })
+      .toBuffer();
+
+    console.log(`✅ Smart face crop: cropped at y=${cropY} (lip position)`);
+    return `data:image/jpeg;base64,${croppedBuffer.toString('base64')}`;
+
+  } catch (error) {
+    console.error('Smart face crop failed:', error);
+    return cropTopForPrivacy(imageInput, 20);
+  }
+}
+
+// ⭐️ Phase 1-1: 얼굴 크롭 후처리 - 상단 일정 비율 자르기 (fallback용)
 /**
  * 이미지 상단을 잘라서 얼굴 노출 방지
  * @param imageInput - base64 이미지 또는 URL
- * @param cropPercentage - 잘라낼 상단 비율 (기본 15%)
+ * @param cropPercentage - 잘라낼 상단 비율 (기본 20%)
  * @returns 크롭된 base64 이미지
  */
-export async function cropTopForPrivacy(imageInput: string, cropPercentage: number = 15): Promise<string> {
+export async function cropTopForPrivacy(imageInput: string, cropPercentage: number = 20): Promise<string> {
   // Node.js 환경에서는 sharp 라이브러리 사용 필요
   // 브라우저 환경에서는 Canvas API 사용
 
