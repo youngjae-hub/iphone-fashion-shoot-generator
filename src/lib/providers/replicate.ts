@@ -21,6 +21,26 @@ const getReplicateClient = () => {
   return new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
 };
 
+// Helper function to fetch image URL and convert to base64
+async function fetchImageAsBase64(url: string): Promise<string> {
+  try {
+    console.log(`Fetching image from: ${url.substring(0, 50)}...`);
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch: ${response.status}`);
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const base64 = buffer.toString('base64');
+    const contentType = response.headers.get('content-type') || 'image/png';
+    console.log(`✅ Image fetched and converted to base64 (${Math.round(buffer.length / 1024)}KB)`);
+    return `data:${contentType};base64,${base64}`;
+  } catch (error) {
+    console.error('Failed to convert URL to base64:', error);
+    return url; // Fallback to URL if conversion fails
+  }
+}
+
 // Helper function to extract URL string from Replicate output
 // Replicate SDK v1.x returns FileOutput (ReadableStream subclass) instead of plain strings
 function extractOutputUrl(output: unknown): string {
@@ -168,7 +188,9 @@ export class IDMVTONProvider implements ITryOnProvider {
       }
     );
 
-    return extractOutputUrl(output);
+    const url = extractOutputUrl(output);
+    // URL을 base64로 변환하여 반환 (cropTopForPrivacy가 제대로 작동하도록)
+    return await fetchImageAsBase64(url);
   }
 
   async isAvailable(): Promise<boolean> {
