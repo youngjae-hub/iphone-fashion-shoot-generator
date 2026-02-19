@@ -110,11 +110,11 @@ export const DEFAULT_NEGATIVE_PROMPT = `
 // ⭐️ Phase 1-1: 얼굴 크롭 후처리 - 상단 일정 비율 자르기
 /**
  * 이미지 상단을 잘라서 얼굴 노출 방지
- * @param base64Image - base64 인코딩된 이미지 (data:image/... 형식)
+ * @param imageInput - base64 이미지 또는 URL
  * @param cropPercentage - 잘라낼 상단 비율 (기본 15%)
  * @returns 크롭된 base64 이미지
  */
-export async function cropTopForPrivacy(base64Image: string, cropPercentage: number = 15): Promise<string> {
+export async function cropTopForPrivacy(imageInput: string, cropPercentage: number = 15): Promise<string> {
   // Node.js 환경에서는 sharp 라이브러리 사용 필요
   // 브라우저 환경에서는 Canvas API 사용
 
@@ -123,9 +123,22 @@ export async function cropTopForPrivacy(base64Image: string, cropPercentage: num
     try {
       const sharp = require('sharp');
 
-      // base64에서 버퍼 추출
-      const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
-      const imageBuffer = Buffer.from(base64Data, 'base64');
+      let imageBuffer: Buffer;
+
+      // URL인 경우 fetch로 이미지 다운로드
+      if (imageInput.startsWith('http://') || imageInput.startsWith('https://')) {
+        console.log(`Fetching image from URL for cropping...`);
+        const response = await fetch(imageInput);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch image: ${response.status}`);
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        imageBuffer = Buffer.from(arrayBuffer);
+      } else {
+        // base64인 경우
+        const base64Data = imageInput.replace(/^data:image\/\w+;base64,/, '');
+        imageBuffer = Buffer.from(base64Data, 'base64');
+      }
 
       // 이미지 메타데이터 가져오기
       const metadata = await sharp(imageBuffer).metadata();
@@ -133,7 +146,7 @@ export async function cropTopForPrivacy(base64Image: string, cropPercentage: num
 
       if (!width || !height) {
         console.warn('Could not get image dimensions for cropping');
-        return base64Image; // 크롭 실패 시 원본 반환
+        return imageInput; // 크롭 실패 시 원본 반환
       }
 
       // 상단 크롭 계산
@@ -151,12 +164,12 @@ export async function cropTopForPrivacy(base64Image: string, cropPercentage: num
         .toBuffer();
 
       // base64로 다시 인코딩
-      const mimeType = base64Image.match(/^data:(image\/\w+);base64,/)?.[1] || 'image/jpeg';
-      return `data:${mimeType};base64,${croppedBuffer.toString('base64')}`;
+      console.log(`✅ Image cropped successfully (${cropPercentage}% from top)`);
+      return `data:image/jpeg;base64,${croppedBuffer.toString('base64')}`;
 
     } catch (error) {
       console.error('Image cropping failed:', error);
-      return base64Image; // 에러 시 원본 반환
+      return imageInput; // 에러 시 원본 반환
     }
   } else {
     // 클라이언트 환경 (브라우저) - Canvas API 사용
@@ -172,7 +185,7 @@ export async function cropTopForPrivacy(base64Image: string, cropPercentage: num
 
         const ctx = canvas.getContext('2d');
         if (!ctx) {
-          resolve(base64Image);
+          resolve(imageInput);
           return;
         }
 
@@ -187,8 +200,8 @@ export async function cropTopForPrivacy(base64Image: string, cropPercentage: num
 
         resolve(canvas.toDataURL('image/jpeg', 0.95));
       };
-      img.onerror = () => resolve(base64Image);
-      img.src = base64Image;
+      img.onerror = () => resolve(imageInput);
+      img.src = imageInput;
     });
   }
 }
