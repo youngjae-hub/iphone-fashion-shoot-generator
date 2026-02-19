@@ -192,25 +192,26 @@ export async function POST(request: NextRequest) {
           });
         }
 
-        // ⭐️ Phase 1-1: 얼굴 크롭 (프롬프트 의존 X, 후처리로 확실히 제거)
-        try {
-          console.log(`Applying face crop to model image for ${task.pose}...`);
-          modelImage = await cropTopForPrivacy(modelImage, 18); // 상단 18% 크롭
-          console.log(`✅ Face cropped successfully for ${task.pose}`);
-        } catch (cropError) {
-          console.warn(`⚠️ Face crop failed for ${task.pose}:`, cropError);
-          // 크롭 실패 시 원본 사용 (cropTopForPrivacy가 이미 원본 반환)
-        }
-
         // 2. Virtual Try-On 필수 적용 (의류만 교체)
-        // ⭐️ Phase 1-2: 자동 분류된 카테고리 사용
-        const resultImage = await tryOnProvider.tryOn({
+        // ⭐️ 주의: VTON은 얼굴/신체 감지가 필요하므로 크롭 전에 실행해야 함
+        console.log(`👗 Applying VTON for ${task.pose} pose (category: ${vtonCategory})...`);
+        let resultImage = await tryOnProvider.tryOn({
           garmentImage,
           modelImage,
           pose: task.pose,
           category: vtonCategory, // 자동 분류 또는 사용자 지정 카테고리
           seed: settings.seed ? settings.seed + task.shotIndex : undefined, // 각 컷마다 다른 시드
         });
+
+        // ⭐️ Phase 1-1: 얼굴 크롭 (VTON 후에 적용 - 신체 감지 문제 방지)
+        try {
+          console.log(`Applying face crop to VTON result for ${task.pose}...`);
+          resultImage = await cropTopForPrivacy(resultImage, 15); // 상단 15% 크롭 (VTON 후라 약간 줄임)
+          console.log(`✅ Face cropped successfully for ${task.pose}`);
+        } catch (cropError) {
+          console.warn(`⚠️ Face crop failed for ${task.pose}:`, cropError);
+          // 크롭 실패 시 원본 사용 (cropTopForPrivacy가 이미 원본 반환)
+        }
 
         return {
           id: uuidv4(),
