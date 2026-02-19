@@ -76,22 +76,27 @@ export class ProviderRegistry {
 }
 
 // 아이폰 스타일 프롬프트 생성 유틸리티 (VTON 호환 - 전체 얼굴 필요)
+// 레퍼런스: 쇼핑몰 모델컷 스타일 (자연광, 미니멀 배경, 목까지 크롭)
 export function generateIPhoneStylePrompt(pose: PoseType, additionalPrompt?: string): string {
   // ⚠️ VTON이 신체를 감지하려면 전체 얼굴이 보여야 함 (얼굴 크롭은 VTON 후 후처리로)
   const basePrompt = `
-    iPhone photography style, natural lighting,
-    young Korean female model, full body shot with visible face,
+    iPhone photography style, natural window lighting,
+    young Korean female model with long black wavy hair,
+    full body shot with visible face,
     high-quality fashion lookbook, sharp details,
-    natural skin texture, subtle color grading,
-    professional fashion photography
+    natural skin texture, minimal cozy interior background,
+    white walls, wooden floor, simple furniture,
+    professional fashion e-commerce photography
   `.trim().replace(/\s+/g, ' ');
 
+  // 레퍼런스 모델컷 기반 포즈 프롬프트
   const posePrompts: Record<PoseType, string> = {
-    front: 'front view, standing pose, looking at camera direction',
-    side: 'side profile, 90 degree angle, elegant silhouette',
-    back: 'back view, showing garment back details',
-    styled: 'dynamic editorial pose, natural movement, lifestyle feel',
-    detail: 'close-up detail shot, fabric texture, craftsmanship focus',
+    front: 'front view, standing straight, arms relaxed at sides, looking slightly off camera, natural stance',
+    back: 'back view, showing garment back details, slight head turn, long hair visible',
+    side: '3/4 angle view, body turned 45 degrees, elegant silhouette, one hand relaxed',
+    sitting: 'sitting on white sofa or wooden chair, relaxed pose, legs together or crossed, natural lifestyle feel',
+    styled: 'dynamic editorial pose, hand touching hair or near face, natural movement, lifestyle editorial feel',
+    fullbody: 'full body shot from head to toe, standing pose, feet visible, generous framing with floor visible',
   };
 
   return `${basePrompt}, ${posePrompts[pose]}${additionalPrompt ? `, ${additionalPrompt}` : ''}`;

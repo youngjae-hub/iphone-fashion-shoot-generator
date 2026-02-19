@@ -14,16 +14,26 @@ export interface ProviderConfig {
   background: BackgroundProvider;
 }
 
-// Pose Types
-export type PoseType = 'front' | 'side' | 'back' | 'styled' | 'detail';
+// Pose Types - 레퍼런스 모델컷 기반 6가지 포즈
+export type PoseType = 'front' | 'back' | 'side' | 'sitting' | 'styled' | 'fullbody';
 
 export interface PoseConfig {
   type: PoseType;
   label: string;
-  promptKr: string;
+  labelKr: string;
   promptEn: string;
   enabled: boolean;
 }
+
+// 기본 포즈 설정
+export const DEFAULT_POSES: PoseConfig[] = [
+  { type: 'front', label: 'Front', labelKr: '정면', promptEn: 'front view, standing straight, arms relaxed at sides', enabled: true },
+  { type: 'back', label: 'Back', labelKr: '뒷면', promptEn: 'back view, showing back of garment, slight head turn', enabled: true },
+  { type: 'side', label: 'Side', labelKr: '측면', promptEn: '3/4 angle view, slightly turned body, elegant silhouette', enabled: true },
+  { type: 'sitting', label: 'Sitting', labelKr: '앉은', promptEn: 'sitting on sofa or chair, relaxed pose, legs crossed or together', enabled: true },
+  { type: 'styled', label: 'Styled', labelKr: '연출', promptEn: 'hand touching hair or near face, natural dynamic pose, lifestyle editorial feel', enabled: true },
+  { type: 'fullbody', label: 'Full Body', labelKr: '전신', promptEn: 'full body shot showing feet, standing pose, head to toe visible', enabled: true },
+];
 
 // IDM-VTON Garment Categories
 export type VTONCategory = 'upper_body' | 'lower_body' | 'dresses';
@@ -121,18 +131,12 @@ export const DEFAULT_PROVIDER_CONFIG: ProviderConfig = {
 export const DEFAULT_GENERATION_SETTINGS: GenerationSettings = {
   modelStyle: 'iphone-natural',
   backgroundStyle: 'minimal-studio',
-  poses: ['front', 'side', 'back', 'styled', 'detail'],
+  poses: ['front', 'back', 'side', 'sitting', 'styled', 'fullbody'],
   shotsPerPose: 1,
-  totalShots: 5,
+  totalShots: 6,
 };
 
-export const POSE_CONFIGS: PoseConfig[] = [
-  { type: 'front', label: '정면', promptKr: '정면 전신샷', promptEn: 'wide full body shot, standing casually facing camera, weight on one leg, relaxed natural stance, shot from distance with space around model', enabled: true },
-  { type: 'side', label: '측면', promptKr: '옆 전신샷', promptEn: 'wide full body shot, side profile angle, looking away naturally, candid walking moment, generous framing with environment visible', enabled: true },
-  { type: 'back', label: '뒷면', promptKr: '뒤 전신샷', promptEn: 'wide full body shot, back view, slightly looking over shoulder, showing outfit back details, shot from distance', enabled: true },
-  { type: 'styled', label: '연출', promptKr: '자연스러운 연출', promptEn: 'wide shot lifestyle pose - sitting on chair, adjusting clothes, twirling skirt, hand in pocket, touching hair, full body with surroundings', enabled: true },
-  { type: 'detail', label: '디테일', promptKr: '디테일 샷', promptEn: '3/4 body shot with comfortable framing, focusing on outfit details, fabric texture, accessories, not too tight', enabled: true },
-];
+// POSE_CONFIGS는 DEFAULT_POSES를 사용 (위에서 정의됨)
 
 // ============================================
 // LoRA Training Types

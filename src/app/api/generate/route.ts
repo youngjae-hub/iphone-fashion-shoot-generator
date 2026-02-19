@@ -164,8 +164,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ⭐️ 모델 일관성을 위한 공통 시드 설정
+    // 시드가 없으면 랜덤 생성하여 모든 포즈에 동일하게 적용
+    const baseSeed = settings.seed || Math.floor(Math.random() * 1000000);
+    console.log(`🎲 Using base seed for model consistency: ${baseSeed}`);
+
+    // 모델 일관성을 위한 상세 설명 (모든 포즈에 동일하게 적용)
+    const modelDescription = `same young Korean female model throughout all shots,
+      long black wavy hair, slim figure, natural makeup,
+      consistent appearance and body proportions`.replace(/\s+/g, ' ');
+
+    // 첫 번째 생성된 모델 이미지 (이후 포즈의 스타일 참조로 사용)
+    let referenceModelImage: string | null = null;
+
     // 병렬 이미지 생성 함수
-    async function generateSingleImage(task: GenerationTask): Promise<GeneratedImage> {
+    async function generateSingleImage(task: GenerationTask, useReference: boolean = false): Promise<GeneratedImage> {
       try {
         // Virtual Try-On 필수 체크
         if (!tryOnAvailable) {
@@ -174,42 +187,53 @@ export async function POST(request: NextRequest) {
 
         let modelImage: string;
 
-        // 1. AI로 모델 생성 (참조 이미지는 스타일/조명/배경 가이드로만 사용)
-        // ⚠️ 참조 이미지를 VTON 베이스로 직접 사용하면 안 됨 (옷 갈아입히기는 지원 안 함)
+        // 스타일 참조 이미지 결정
+        // - 사용자가 제공한 참조 이미지가 있으면 사용
+        // - 없으면 첫 번째 생성된 모델을 참조로 사용 (모델 일관성)
+        let effectiveStyleRef = styleReferenceImages;
+        if (!effectiveStyleRef?.length && useReference && referenceModelImage) {
+          effectiveStyleRef = [referenceModelImage];
+          console.log(`🔗 Using first model as reference for consistency (${task.pose})`);
+        }
+
+        // 1. AI로 모델 생성 (모델 일관성을 위해 동일한 시드와 설명 사용)
+        const consistentPrompt = basePrompt
+          ? `${basePrompt}, ${modelDescription}`
+          : modelDescription;
+
         modelImage = await imageProvider.generateModelImage({
           pose: task.pose,
           style: settings.modelStyle,
-          seed: settings.seed ? settings.seed + task.shotIndex : undefined,
+          seed: baseSeed, // 모든 포즈에 동일한 시드 사용
           negativePrompt: negativePrompt || settings.negativePrompt,
-          backgroundSpotImages, // 배경 스팟 이미지들 전달
-          customPrompt: basePrompt, // 커스텀 프롬프트 전달
-          styleReferenceImages, // 스타일 참조 (조명/배경/분위기만 참고, 옷은 복사하지 않음)
+          backgroundSpotImages,
+          customPrompt: consistentPrompt,
+          styleReferenceImages: effectiveStyleRef,
         });
 
-        if (styleReferenceImages && styleReferenceImages.length > 0) {
-          console.log(`Generated model with style reference for ${task.pose} (style/lighting/background only)`);
+        // 첫 번째 이미지면 참조용으로 저장
+        if (!referenceModelImage) {
+          referenceModelImage = modelImage;
+          console.log(`📌 First model image saved as reference`);
         }
 
         // 2. Virtual Try-On 필수 적용 (의류만 교체)
-        // ⭐️ 주의: VTON은 얼굴/신체 감지가 필요하므로 크롭 전에 실행해야 함
         console.log(`👗 Applying VTON for ${task.pose} pose (category: ${vtonCategory})...`);
         let resultImage = await tryOnProvider.tryOn({
           garmentImage,
           modelImage,
           pose: task.pose,
-          category: vtonCategory, // 자동 분류 또는 사용자 지정 카테고리
-          seed: settings.seed ? settings.seed + task.shotIndex : undefined, // 각 컷마다 다른 시드
+          category: vtonCategory,
+          seed: baseSeed + task.shotIndex, // 약간의 변형을 위해 shotIndex 추가
         });
 
         // ⭐️ 카테고리별 스마트 크롭
-        // 상의/원피스: 목까지 보이게 / 하의: 가슴~배꼽에서 크롭
         try {
           console.log(`Applying smart crop (${vtonCategory}) to VTON result for ${task.pose}...`);
           resultImage = await smartFaceCrop(resultImage, vtonCategory);
           console.log(`✅ Smart crop completed for ${task.pose} (${vtonCategory})`);
         } catch (cropError) {
           console.warn(`⚠️ Face crop failed for ${task.pose}:`, cropError);
-          // 크롭 실패 시 원본 사용
         }
 
         return {
@@ -217,22 +241,45 @@ export async function POST(request: NextRequest) {
           url: resultImage,
           pose: task.pose,
           timestamp: Date.now(),
-          settings,
-          provider: styleReferenceImages && styleReferenceImages.length > 0
-            ? `${providers.imageGeneration} + ${providers.tryOn} (Style Ref)`
+          settings: { ...settings, seed: baseSeed }, // 사용된 시드 저장
+          provider: effectiveStyleRef?.length
+            ? `${providers.imageGeneration} + ${providers.tryOn} (Consistent)`
             : `${providers.imageGeneration} + ${providers.tryOn}`,
         };
       } catch (error) {
         console.error(`Error generating image for pose ${task.pose}, shot ${task.shotIndex}:`, error);
-        throw error; // Try-On 실패는 전체 요청 실패로 처리
+        throw error;
       }
     }
 
-    // 모든 이미지 병렬 생성 (Promise.all 사용)
-    console.log(`Starting parallel generation of ${tasks.length} images...`);
+    // ⭐️ 모델 일관성을 위해 첫 번째 이미지는 먼저 생성
+    console.log(`Starting generation with model consistency...`);
     const startTime = Date.now();
 
-    const results = await Promise.allSettled(tasks.map(task => generateSingleImage(task)));
+    // 첫 번째 작업 먼저 실행 (참조 모델 생성)
+    const firstTask = tasks[0];
+    const remainingTasks = tasks.slice(1);
+
+    let firstResult: GeneratedImage | null = null;
+    try {
+      firstResult = await generateSingleImage(firstTask, false);
+      console.log(`✅ First model generated successfully for ${firstTask.pose}`);
+    } catch (error) {
+      console.error(`❌ First model generation failed:`, error);
+    }
+
+    // 나머지 작업들은 병렬로 실행 (첫 번째 모델을 참조로 사용)
+    const remainingResults = await Promise.allSettled(
+      remainingTasks.map(task => generateSingleImage(task, true))
+    );
+
+    // 결과 취합
+    const results: PromiseSettledResult<GeneratedImage>[] = [
+      firstResult
+        ? { status: 'fulfilled' as const, value: firstResult }
+        : { status: 'rejected' as const, reason: new Error('First model generation failed') },
+      ...remainingResults,
+    ];
 
     const generatedImages: GeneratedImage[] = [];
     const errors: string[] = [];

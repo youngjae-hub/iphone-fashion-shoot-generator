@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import type { GenerationSettings as GenerationSettingsType, PoseType, LoRAModel } from '@/types';
-import { POSE_CONFIGS } from '@/types';
+import { DEFAULT_POSES } from '@/types';
 import HelpTooltip from './HelpTooltip';
 
 interface GenerationSettingsProps {
@@ -235,22 +235,23 @@ export default function GenerationSettings({
             <p className="mb-2">생성할 이미지의 모델 포즈를 선택합니다. 여러 개를 선택할 수 있습니다.</p>
             <ul className="list-disc list-inside space-y-1">
               <li><strong>정면:</strong> 앞에서 바라본 기본 포즈</li>
-              <li><strong>측면:</strong> 옆에서 바라본 프로필 샷</li>
               <li><strong>뒷면:</strong> 뒤에서 바라본 백샷</li>
-              <li><strong>연출:</strong> 자연스러운 움직임이 있는 포즈</li>
-              <li><strong>디테일:</strong> 의류 디테일을 강조한 클로즈업</li>
+              <li><strong>측면:</strong> 3/4 각도의 프로필 샷</li>
+              <li><strong>앉은:</strong> 소파/의자에 앉은 포즈</li>
+              <li><strong>연출:</strong> 머리 만지기 등 자연스러운 연출</li>
+              <li><strong>전신:</strong> 발끝까지 보이는 풀샷</li>
             </ul>
             <p className="mt-2 text-[11px]">💡 다양한 포즈를 선택하면 룩북의 완성도가 높아집니다!</p>
           </HelpTooltip>
         </label>
         <div className="flex flex-wrap gap-2">
-          {POSE_CONFIGS.map((pose) => (
+          {DEFAULT_POSES.map((pose) => (
             <button
               key={pose.type}
               onClick={() => togglePose(pose.type)}
               className={`pose-chip ${settings.poses.includes(pose.type) ? 'active' : ''}`}
             >
-              {pose.label}
+              {pose.labelKr}
             </button>
           ))}
         </div>

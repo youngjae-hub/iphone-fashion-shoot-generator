@@ -141,3 +141,42 @@ src/
 - 'use client' 컴포넌트 분리
 - API routes는 App Router 방식
 - 새 기능 추가 전에 반드시 로드맵 확인 — 로드맵에 없는 기능은 만들지 않는다
+
+---
+
+## ⚠️ 배포 전 체크리스트 (필수)
+
+**배포 전에 반드시 아래를 확인할 것. 커밋되지 않은 변경사항은 Git에서 보이지 않으므로 위험!**
+
+### 자동 체크 스크립트
+```bash
+./scripts/pre-deploy-check.sh
+```
+
+### 수동 체크리스트
+1. **Provider 파일 변경 확인**
+   ```bash
+   git status src/lib/providers/
+   git diff src/lib/providers/google-gemini.ts
+   ```
+
+2. **실제 사용 모델 확인**
+   ```bash
+   grep "private model = " src/lib/providers/google-gemini.ts
+   # 결과: private model = 'nano-banana-pro-preview'; (기본값)
+   ```
+
+3. **디버그 API로 런타임 설정 확인** (배포 후)
+   ```
+   GET /api/debug
+   ```
+   - `runtime.geminiModel`: 실제 사용 중인 모델
+   - `git.uncommittedProviderChanges`: 커밋 안 된 변경사항
+
+### 핵심 Provider 설정 (변경 시 주의!)
+| Provider | 파일 | 기본 모델 |
+|----------|------|-----------|
+| Google Gemini | `google-gemini.ts:42` | `nano-banana-pro-preview` |
+| IDM-VTON | `replicate.ts` | `cuuupid/idm-vton` |
+
+**모델 변경 시 반드시 커밋 후 배포!** unstaged 변경은 로컬에서만 작동하고 배포 환경에는 반영되지 않음.

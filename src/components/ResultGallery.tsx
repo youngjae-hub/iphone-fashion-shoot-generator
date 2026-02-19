@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { GeneratedImage, PoseType, POSE_CONFIGS } from '@/types';
+import { GeneratedImage, PoseType, DEFAULT_POSES } from '@/types';
 
 interface ResultGalleryProps {
   images: GeneratedImage[];
@@ -135,7 +135,7 @@ export default function ResultGallery({
     : images.filter((img) => img.pose === selectedPose);
 
   const getPoseLabel = (pose: PoseType) => {
-    return POSE_CONFIGS.find((p) => p.type === pose)?.label || pose;
+    return DEFAULT_POSES.find((p) => p.type === pose)?.labelKr || pose;
   };
 
   const uniquePoses = Array.from(new Set(images.map((img) => img.pose)));
