@@ -38,11 +38,18 @@ function generateAblelyStylePrompt(pose: string, garmentDescription?: string): s
 export class GoogleGeminiImageProvider implements IImageGenerationProvider {
   name = 'google-gemini';
   private apiKey: string;
-  // Nano Banana Pro - 더 고품질 이미지 생성
+  // ⚠️ 모델 변경 시 반드시 커밋할 것! (unstaged 변경으로 인한 혼란 방지)
   private model = 'nano-banana-pro-preview';
+
+  // 디버깅용: 실제 사용 중인 모델명 반환
+  getModelName(): string {
+    return this.model;
+  }
 
   constructor() {
     this.apiKey = process.env.GOOGLE_CLOUD_API_KEY || '';
+    // 🔍 시작 시 실제 모델 로깅 (디버깅용)
+    console.log(`[GoogleGeminiImageProvider] Initialized with model: ${this.model}`);
   }
 
   async generateModelImage(options: ModelGenerationOptions): Promise<string> {
@@ -86,12 +93,8 @@ ${hasBackgroundSpot ? `LOCATION (${backgroundSpotCount} reference images):
 - Model naturally placed in this setting
 ` : ''}
 ${options.customPrompt ? `CUSTOM STYLE: ${options.customPrompt}\n` : ''}
-MODEL: Korean woman in early 20s, natural expression
-⚠️ CRITICAL - FACE CROPPING FOR PRIVACY:
-- Face MUST be cropped above lips
-- Show ONLY chin and lower jaw
-- Eyes and nose must NOT be visible
-- Tight head cropping for anonymity
+MODEL: Korean woman in early 20s, natural expression, full visible face
+(Note: Face will be cropped post-VTON for privacy - generate with complete face for body detection)
 
 POSE: ${posePrompt}
 
@@ -149,6 +152,9 @@ Output: Professional fashion photo that looks authentically shot, not AI-generat
     }
 
     parts.push({ text: textPrompt });
+
+    // 🔍 실제 호출되는 모델 로깅 (디버깅용)
+    console.log(`[Gemini] Calling model: ${this.model} for pose: ${options.pose}`);
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`,
