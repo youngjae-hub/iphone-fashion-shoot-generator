@@ -177,7 +177,7 @@ export class IDMVTONProvider implements ITryOnProvider {
         input: {
           crop: false, // Preserve original pose/background (no cropping)
           seed: options.seed !== undefined ? options.seed : 42,
-          steps: 20, // Vercel Hobby 60초 제한 대응 (~25-30초)
+          steps: 15, // Vercel Hobby 60초 제한 대응 (~15-20초)
           category: options.category || "upper_body",
           force_dc: false,
           garm_img: options.garmentImage,
