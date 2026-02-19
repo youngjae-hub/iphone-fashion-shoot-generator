@@ -94,7 +94,7 @@ export function generateIPhoneStylePrompt(pose: PoseType, additionalPrompt?: str
     front: 'front view, standing straight, arms relaxed at sides, looking slightly off camera, natural stance',
     back: 'back view, showing garment back details, slight head turn, long hair visible',
     side: '3/4 angle view, body turned 45 degrees, elegant silhouette, one hand relaxed',
-    sitting: 'sitting on white sofa or wooden chair, relaxed pose, legs together or crossed, natural lifestyle feel',
+    sitting: 'sitting on white sofa, leaning back relaxed, one hand on armrest or sofa, legs together side by side, casual lifestyle pose',
     styled: 'dynamic editorial pose, hand touching hair or near face, natural movement, lifestyle editorial feel',
     fullbody: 'full body shot from head to toe, standing pose, feet visible, generous framing with floor visible',
   };

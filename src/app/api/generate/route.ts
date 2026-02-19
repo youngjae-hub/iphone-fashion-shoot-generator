@@ -336,11 +336,17 @@ export async function POST(request: NextRequest) {
 
     console.log(`Parallel generation completed in ${(Date.now() - startTime) / 1000}s - ${generatedImages.length}/${tasks.length} successful`);
 
+    // 타임아웃 관련 에러인지 체크
+    const hasTimeoutError = errors.some(e => e.includes('Timeout') || e.includes('시간'));
+    const timeoutHint = hasTimeoutError ? ' 포즈 수를 3개 이하로 줄여보세요.' : '';
+
     if (generatedImages.length === 0) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Virtual Try-On에 실패했습니다.',
+          error: hasTimeoutError
+            ? `시간 초과로 이미지 생성에 실패했습니다.${timeoutHint}`
+            : 'Virtual Try-On에 실패했습니다.',
           details: errors.join(', ')
         },
         { status: 500 }
@@ -349,6 +355,7 @@ export async function POST(request: NextRequest) {
 
     // 일부 실패한 경우 경고 포함
     const partialSuccess = generatedImages.length < tasks.length;
+    const timeoutWarning = hasTimeoutError ? ` (일부 시간 초과 -${timeoutHint})` : '';
 
     // Notion 로깅 (비동기 - 응답을 지연시키지 않음)
     if (process.env.NOTION_API_KEY && process.env.NOTION_DATABASE_ID) {
@@ -378,7 +385,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       images: generatedImages,
-      warnings: partialSuccess ? errors : undefined,
+      warnings: partialSuccess ? [...errors, timeoutWarning].filter(Boolean) : undefined,
     });
   } catch (error) {
     console.error('Generation error:', error);
