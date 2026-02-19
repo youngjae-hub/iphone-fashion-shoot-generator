@@ -174,22 +174,20 @@ export async function POST(request: NextRequest) {
 
         let modelImage: string;
 
-        // 1. 스타일 참조 이미지가 있으면 그것을 모델 이미지로 사용 (옷만 갈아끼우기)
+        // 1. AI로 모델 생성 (참조 이미지는 스타일/조명/배경 가이드로만 사용)
+        // ⚠️ 참조 이미지를 VTON 베이스로 직접 사용하면 안 됨 (옷 갈아입히기는 지원 안 함)
+        modelImage = await imageProvider.generateModelImage({
+          pose: task.pose,
+          style: settings.modelStyle,
+          seed: settings.seed ? settings.seed + task.shotIndex : undefined,
+          negativePrompt: negativePrompt || settings.negativePrompt,
+          backgroundSpotImages, // 배경 스팟 이미지들 전달
+          customPrompt: basePrompt, // 커스텀 프롬프트 전달
+          styleReferenceImages, // 스타일 참조 (조명/배경/분위기만 참고, 옷은 복사하지 않음)
+        });
+
         if (styleReferenceImages && styleReferenceImages.length > 0) {
-          // 포즈별로 다른 참조 이미지를 사용하거나, 첫 번째 이미지 사용
-          const referenceIndex = Math.min(task.shotIndex, styleReferenceImages.length - 1);
-          modelImage = styleReferenceImages[referenceIndex];
-          console.log(`Using style reference image ${referenceIndex} as base model for ${task.pose}`);
-        } else {
-          // 참조 이미지가 없으면 AI로 모델 생성
-          modelImage = await imageProvider.generateModelImage({
-            pose: task.pose,
-            style: settings.modelStyle,
-            seed: settings.seed ? settings.seed + task.shotIndex : undefined,
-            negativePrompt: negativePrompt || settings.negativePrompt,
-            backgroundSpotImages, // 배경 스팟 이미지들 전달
-            customPrompt: basePrompt, // 커스텀 프롬프트 전달
-          });
+          console.log(`Generated model with style reference for ${task.pose} (style/lighting/background only)`);
         }
 
         // 2. Virtual Try-On 필수 적용 (의류만 교체)
@@ -220,7 +218,7 @@ export async function POST(request: NextRequest) {
           timestamp: Date.now(),
           settings,
           provider: styleReferenceImages && styleReferenceImages.length > 0
-            ? `${providers.tryOn} (Reference-based)`
+            ? `${providers.imageGeneration} + ${providers.tryOn} (Style Ref)`
             : `${providers.imageGeneration} + ${providers.tryOn}`,
         };
       } catch (error) {
@@ -356,17 +354,23 @@ export async function PUT(request: NextRequest) {
       style: settings.modelStyle,
       seed: settings.seed,
       negativePrompt: settings.negativePrompt,
-      garmentImage,
-      styleReferenceImages,
+      styleReferenceImages, // 스타일 참조용 (조명/배경/분위기만)
     });
 
-    const resultImage = await tryOnProvider.tryOn({
+    let resultImage = await tryOnProvider.tryOn({
       garmentImage,
       modelImage,
       pose,
       category: vtonCategory,
       seed: settings.seed,
     });
+
+    // 얼굴 크롭 후처리
+    try {
+      resultImage = await smartFaceCrop(resultImage);
+    } catch (cropError) {
+      console.warn('⚠️ Face crop failed in regeneration:', cropError);
+    }
 
     return NextResponse.json({
       success: true,
@@ -376,7 +380,9 @@ export async function PUT(request: NextRequest) {
         pose,
         timestamp: Date.now(),
         settings,
-        provider: `${providers.imageGeneration} + ${providers.tryOn}`,
+        provider: styleReferenceImages?.length
+          ? `${providers.imageGeneration} + ${providers.tryOn} (Style Ref)`
+          : `${providers.imageGeneration} + ${providers.tryOn}`,
       } as GeneratedImage,
     });
   } catch (error) {
