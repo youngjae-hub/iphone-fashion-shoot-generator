@@ -128,12 +128,22 @@ export async function cropTopForPrivacy(imageInput: string, cropPercentage: numb
       // URL인 경우 fetch로 이미지 다운로드
       if (imageInput.startsWith('http://') || imageInput.startsWith('https://')) {
         console.log(`Fetching image from URL for cropping...`);
-        const response = await fetch(imageInput);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch image: ${response.status}`);
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 30000); // 30초 타임아웃
+
+          const response = await fetch(imageInput, { signal: controller.signal });
+          clearTimeout(timeoutId);
+
+          if (!response.ok) {
+            throw new Error(`Failed to fetch image: ${response.status}`);
+          }
+          const arrayBuffer = await response.arrayBuffer();
+          imageBuffer = Buffer.from(arrayBuffer);
+        } catch (fetchError) {
+          console.error('Failed to fetch image for cropping:', fetchError);
+          return imageInput; // fetch 실패 시 원본 URL 반환
         }
-        const arrayBuffer = await response.arrayBuffer();
-        imageBuffer = Buffer.from(arrayBuffer);
       } else {
         // base64인 경우
         const base64Data = imageInput.replace(/^data:image\/\w+;base64,/, '');
