@@ -201,11 +201,12 @@ export async function POST(request: NextRequest) {
           seed: settings.seed ? settings.seed + task.shotIndex : undefined, // 각 컷마다 다른 시드
         });
 
-        // ⭐️ 얼굴 인식 기반 스마트 크롭 (입술 위치에서 자르기)
+        // ⭐️ 카테고리별 스마트 크롭
+        // 상의/원피스: 목까지 보이게 / 하의: 가슴~배꼽에서 크롭
         try {
-          console.log(`Applying smart face crop to VTON result for ${task.pose}...`);
-          resultImage = await smartFaceCrop(resultImage);
-          console.log(`✅ Smart face crop completed for ${task.pose}`);
+          console.log(`Applying smart crop (${vtonCategory}) to VTON result for ${task.pose}...`);
+          resultImage = await smartFaceCrop(resultImage, vtonCategory);
+          console.log(`✅ Smart crop completed for ${task.pose} (${vtonCategory})`);
         } catch (cropError) {
           console.warn(`⚠️ Face crop failed for ${task.pose}:`, cropError);
           // 크롭 실패 시 원본 사용
@@ -365,9 +366,9 @@ export async function PUT(request: NextRequest) {
       seed: settings.seed,
     });
 
-    // 얼굴 크롭 후처리
+    // 카테고리별 크롭 후처리
     try {
-      resultImage = await smartFaceCrop(resultImage);
+      resultImage = await smartFaceCrop(resultImage, vtonCategory);
     } catch (cropError) {
       console.warn('⚠️ Face crop failed in regeneration:', cropError);
     }

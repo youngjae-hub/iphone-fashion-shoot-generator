@@ -105,22 +105,30 @@ export const DEFAULT_NEGATIVE_PROMPT = `
   oversaturated, artificial lighting
 `.trim().replace(/\s+/g, ' ');
 
-// ⭐️ 얼굴 인식 기반 스마트 크롭 (Google Vision API 사용)
+// ⭐️ 카테고리별 스마트 크롭 (Google Vision API 사용)
 /**
- * 얼굴을 인식하여 입술 위치에서 크롭
+ * 의류 카테고리에 따라 적절한 위치에서 크롭
+ * - 상의/원피스: 턱 아래~목 위치에서 크롭 (목이 보이도록)
+ * - 하의: 가슴~배꼽 위치에서 크롭
  * @param imageInput - base64 이미지
+ * @param category - 의류 카테고리 (upper_body, lower_body, dresses)
  * @returns 크롭된 base64 이미지
  */
-export async function smartFaceCrop(imageInput: string): Promise<string> {
+export async function smartFaceCrop(
+  imageInput: string,
+  category: 'upper_body' | 'lower_body' | 'dresses' = 'upper_body'
+): Promise<string> {
   if (typeof window !== 'undefined') {
     // 브라우저 환경에서는 fallback으로 고정 비율 크롭
-    return cropTopForPrivacy(imageInput, 20);
+    const fallbackPercent = category === 'lower_body' ? 35 : 15;
+    return cropTopForPrivacy(imageInput, fallbackPercent);
   }
 
   const apiKey = process.env.GOOGLE_CLOUD_API_KEY;
   if (!apiKey) {
     console.warn('Google Cloud API key not found, falling back to fixed crop');
-    return cropTopForPrivacy(imageInput, 20);
+    const fallbackPercent = category === 'lower_body' ? 35 : 15;
+    return cropTopForPrivacy(imageInput, fallbackPercent);
   }
 
   try {
@@ -135,7 +143,8 @@ export async function smartFaceCrop(imageInput: string): Promise<string> {
     const { width, height } = metadata;
 
     if (!width || !height) {
-      return cropTopForPrivacy(imageInput, 20);
+      const fallbackPercent = category === 'lower_body' ? 35 : 15;
+      return cropTopForPrivacy(imageInput, fallbackPercent);
     }
 
     // Google Vision API로 얼굴 감지
@@ -155,7 +164,8 @@ export async function smartFaceCrop(imageInput: string): Promise<string> {
 
     if (!visionResponse.ok) {
       console.warn('Vision API failed, falling back to fixed crop');
-      return cropTopForPrivacy(imageInput, 20);
+      const fallbackPercent = category === 'lower_body' ? 35 : 15;
+      return cropTopForPrivacy(imageInput, fallbackPercent);
     }
 
     const visionData = await visionResponse.json();
@@ -163,42 +173,59 @@ export async function smartFaceCrop(imageInput: string): Promise<string> {
 
     if (!faces || faces.length === 0) {
       console.log('No face detected, using fixed crop');
-      return cropTopForPrivacy(imageInput, 20);
+      const fallbackPercent = category === 'lower_body' ? 35 : 15;
+      return cropTopForPrivacy(imageInput, fallbackPercent);
     }
 
-    // 첫 번째 얼굴의 랜드마크에서 입술 하단 위치 찾기
+    // 얼굴 랜드마크 추출
     const face = faces[0];
     const landmarks = face.landmarks || [];
 
-    // LOWER_LIP 또는 MOUTH_BOTTOM 랜드마크 찾기
-    let lipY = 0;
-    for (const landmark of landmarks) {
-      if (landmark.type === 'LOWER_LIP' || landmark.type === 'MOUTH_BOTTOM') {
-        lipY = Math.max(lipY, landmark.position.y);
+    // 카테고리별 크롭 위치 결정
+    let cropY = 0;
+
+    if (category === 'lower_body') {
+      // 하의: 가슴~배꼽 위치에서 크롭 (얼굴 하단에서 더 아래로)
+      // 얼굴 하단 찾기
+      let faceBottom = 0;
+      if (face.boundingPoly?.vertices) {
+        faceBottom = Math.max(...face.boundingPoly.vertices.map((v: {y?: number}) => v.y || 0));
       }
+      // 얼굴 하단에서 이미지 높이의 15% 더 아래 (대략 가슴~배꼽)
+      cropY = Math.floor(faceBottom + height * 0.15);
+      console.log(`👖 Lower body crop: at y=${cropY} (chest/belly level)`);
+    } else {
+      // 상의/원피스: 턱 아래~목 위치에서 크롭
+      // CHIN 또는 턱 위치 찾기
+      let chinY = 0;
+      for (const landmark of landmarks) {
+        if (landmark.type === 'CHIN_GNATHION' || landmark.type === 'CHIN_LEFT_GONION' || landmark.type === 'CHIN_RIGHT_GONION') {
+          chinY = Math.max(chinY, landmark.position.y);
+        }
+      }
+
+      // 턱 랜드마크가 없으면 얼굴 영역의 하단 사용
+      if (chinY === 0 && face.boundingPoly?.vertices) {
+        const vertices = face.boundingPoly.vertices;
+        chinY = Math.max(...vertices.map((v: {y?: number}) => v.y || 0));
+      }
+
+      if (chinY === 0) {
+        return cropTopForPrivacy(imageInput, 15);
+      }
+
+      // 턱 아래 약간 여유를 두고 크롭 (목이 보이도록)
+      cropY = Math.floor(chinY + 20); // 턱 아래 20px
+      console.log(`👕 Upper body crop: at y=${cropY} (below chin, showing neck)`);
     }
 
-    // 랜드마크가 없으면 boundingPoly 사용
-    if (lipY === 0 && face.boundingPoly?.vertices) {
-      const vertices = face.boundingPoly.vertices;
-      const faceBottom = Math.max(...vertices.map((v: {y?: number}) => v.y || 0));
-      const faceTop = Math.min(...vertices.map((v: {y?: number}) => v.y || height));
-      // 얼굴 영역의 70% 지점 (대략 입술 위치)
-      lipY = faceTop + (faceBottom - faceTop) * 0.7;
-    }
-
-    if (lipY === 0) {
-      return cropTopForPrivacy(imageInput, 20);
-    }
-
-    // 입술 위치에서 약간 위로 크롭 (입술 일부만 보이게)
-    const cropY = Math.floor(lipY - 10); // 입술 위 10px 정도
     const newHeight = height - cropY;
 
-    if (newHeight < height * 0.5) {
-      // 너무 많이 잘리면 fallback
+    // 안전 체크
+    if (newHeight < height * 0.4) {
       console.log('Crop too aggressive, using fixed crop');
-      return cropTopForPrivacy(imageInput, 25);
+      const fallbackPercent = category === 'lower_body' ? 35 : 15;
+      return cropTopForPrivacy(imageInput, fallbackPercent);
     }
 
     const croppedBuffer = await sharp(imageBuffer)
@@ -210,12 +237,13 @@ export async function smartFaceCrop(imageInput: string): Promise<string> {
       })
       .toBuffer();
 
-    console.log(`✅ Smart face crop: cropped at y=${cropY} (lip position)`);
+    console.log(`✅ Smart crop completed for ${category}: cropped at y=${cropY}`);
     return `data:image/jpeg;base64,${croppedBuffer.toString('base64')}`;
 
   } catch (error) {
     console.error('Smart face crop failed:', error);
-    return cropTopForPrivacy(imageInput, 20);
+    const fallbackPercent = category === 'lower_body' ? 35 : 15;
+    return cropTopForPrivacy(imageInput, fallbackPercent);
   }
 }
 
