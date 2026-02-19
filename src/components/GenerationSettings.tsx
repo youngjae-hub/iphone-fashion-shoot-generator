@@ -300,6 +300,11 @@ export default function GenerationSettings({
         <p className="text-xs mt-2" style={{ color: 'var(--foreground-muted)' }}>
           {settings.poses.length}개 포즈 × {settings.shotsPerPose}컷
         </p>
+        {settings.totalShots > 3 && (
+          <p className="text-xs mt-2 p-2 rounded" style={{ background: 'rgba(255, 180, 0, 0.2)', color: '#f59e0b' }}>
+            ⚠️ 4개 이상 생성 시 일부가 시간 초과될 수 있습니다
+          </p>
+        )}
       </div>
 
       {/* Seed (Optional) */}

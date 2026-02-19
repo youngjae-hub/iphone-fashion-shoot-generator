@@ -131,9 +131,9 @@ export const DEFAULT_PROVIDER_CONFIG: ProviderConfig = {
 export const DEFAULT_GENERATION_SETTINGS: GenerationSettings = {
   modelStyle: 'iphone-natural',
   backgroundStyle: 'minimal-studio',
-  poses: ['front', 'back', 'side', 'sitting', 'styled', 'fullbody'],
+  poses: ['front', 'styled', 'back'], // 기본 3개 (60초 타임아웃 내 처리 가능)
   shotsPerPose: 1,
-  totalShots: 6,
+  totalShots: 3,
 };
 
 // POSE_CONFIGS는 DEFAULT_POSES를 사용 (위에서 정의됨)

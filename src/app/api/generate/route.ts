@@ -252,9 +252,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ⭐️ 타임아웃 경고 (4개 이상 포즈 시)
+    const TIMEOUT_WARNING_THRESHOLD = 4;
+    if (tasks.length >= TIMEOUT_WARNING_THRESHOLD) {
+      console.warn(`⚠️ ${tasks.length}개 이미지 생성 요청 - 60초 타임아웃 초과 가능성 있음`);
+    }
+
     // ⭐️ 모델 일관성을 위해 첫 번째 이미지는 먼저 생성
-    console.log(`Starting generation with model consistency...`);
+    console.log(`Starting generation with model consistency (${tasks.length} images)...`);
     const startTime = Date.now();
+    const SOFT_TIMEOUT = 50000; // 50초 (60초 타임아웃 전에 응답)
 
     // 첫 번째 작업 먼저 실행 (참조 모델 생성)
     const firstTask = tasks[0];
@@ -263,15 +270,49 @@ export async function POST(request: NextRequest) {
     let firstResult: GeneratedImage | null = null;
     try {
       firstResult = await generateSingleImage(firstTask, false);
-      console.log(`✅ First model generated successfully for ${firstTask.pose}`);
+      console.log(`✅ First model generated successfully for ${firstTask.pose} (${(Date.now() - startTime) / 1000}s)`);
     } catch (error) {
       console.error(`❌ First model generation failed:`, error);
     }
 
-    // 나머지 작업들은 병렬로 실행 (첫 번째 모델을 참조로 사용)
-    const remainingResults = await Promise.allSettled(
-      remainingTasks.map(task => generateSingleImage(task, true))
-    );
+    // 남은 시간 체크
+    const elapsedTime = Date.now() - startTime;
+    const remainingTime = SOFT_TIMEOUT - elapsedTime;
+
+    let remainingResults: PromiseSettledResult<GeneratedImage>[] = [];
+
+    if (remainingTime > 10000 && remainingTasks.length > 0) {
+      // 10초 이상 남았으면 나머지 작업 진행
+      console.log(`⏱️ ${Math.round(remainingTime / 1000)}s remaining, processing ${remainingTasks.length} more tasks...`);
+
+      // 타임아웃 레이스: 남은 시간 내에 완료된 것만 취합
+      const timeoutPromise = new Promise<'timeout'>((resolve) =>
+        setTimeout(() => resolve('timeout'), remainingTime)
+      );
+
+      const tasksPromise = Promise.allSettled(
+        remainingTasks.map(task => generateSingleImage(task, true))
+      );
+
+      const raceResult = await Promise.race([tasksPromise, timeoutPromise]);
+
+      if (raceResult === 'timeout') {
+        console.warn(`⏰ Soft timeout reached, returning partial results`);
+        // 타임아웃이면 빈 결과
+        remainingResults = remainingTasks.map(() => ({
+          status: 'rejected' as const,
+          reason: new Error('Timeout - 시간 초과'),
+        }));
+      } else {
+        remainingResults = raceResult;
+      }
+    } else if (remainingTasks.length > 0) {
+      console.warn(`⏰ Not enough time for remaining tasks (${Math.round(remainingTime / 1000)}s left)`);
+      remainingResults = remainingTasks.map(() => ({
+        status: 'rejected' as const,
+        reason: new Error('Skipped - 시간 부족'),
+      }));
+    }
 
     // 결과 취합
     const results: PromiseSettledResult<GeneratedImage>[] = [
