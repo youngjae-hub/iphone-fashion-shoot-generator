@@ -206,7 +206,7 @@ export async function POST(request: NextRequest) {
         // ⭐️ Phase 1-1: 얼굴 크롭 (VTON 후에 적용 - 신체 감지 문제 방지)
         try {
           console.log(`Applying face crop to VTON result for ${task.pose}...`);
-          resultImage = await cropTopForPrivacy(resultImage, 15); // 상단 15% 크롭 (VTON 후라 약간 줄임)
+          resultImage = await cropTopForPrivacy(resultImage, 25); // 상단 25% 크롭 (얼굴 완전 제거)
           console.log(`✅ Face cropped successfully for ${task.pose}`);
         } catch (cropError) {
           console.warn(`⚠️ Face crop failed for ${task.pose}:`, cropError);
