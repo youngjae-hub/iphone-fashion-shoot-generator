@@ -75,11 +75,12 @@ export class ProviderRegistry {
   }
 }
 
-// 아이폰 스타일 프롬프트 생성 유틸리티 (1월 20일 버전 - 단순화)
+// 아이폰 스타일 프롬프트 생성 유틸리티 (VTON 호환 - 전체 얼굴 필요)
 export function generateIPhoneStylePrompt(pose: PoseType, additionalPrompt?: string): string {
+  // ⚠️ VTON이 신체를 감지하려면 전체 얼굴이 보여야 함 (얼굴 크롭은 VTON 후 후처리로)
   const basePrompt = `
     iPhone photography style, natural lighting,
-    young Korean female model, face cropped above lips for anonymity,
+    young Korean female model, full body shot with visible face,
     high-quality fashion lookbook, sharp details,
     natural skin texture, subtle color grading,
     professional fashion photography
@@ -96,12 +97,11 @@ export function generateIPhoneStylePrompt(pose: PoseType, additionalPrompt?: str
   return `${basePrompt}, ${posePrompts[pose]}${additionalPrompt ? `, ${additionalPrompt}` : ''}`;
 }
 
-// 네거티브 프롬프트 기본값 (1월 20일 버전)
+// 네거티브 프롬프트 기본값 (VTON 호환 - 얼굴 제한 제거)
 export const DEFAULT_NEGATIVE_PROMPT = `
   low quality, blurry, distorted, deformed, ugly,
   bad anatomy, bad proportions, extra limbs,
   watermark, signature, text, logo,
-  full face visible, face showing, eyes visible,
   oversaturated, artificial lighting
 `.trim().replace(/\s+/g, ' ');
 
