@@ -110,6 +110,49 @@ export const DEFAULT_NEGATIVE_PROMPT = `
   oversaturated, artificial lighting
 `.trim().replace(/\s+/g, ' ');
 
+// ⭐️ VTON 결과물 블렌딩 후처리 (합성 느낌 감소)
+/**
+ * VTON 결과물의 선명도를 낮추고 엣지를 부드럽게 처리
+ * - 모델 외곽선이 배경과 자연스럽게 어우러지도록
+ * @param imageInput - base64 이미지
+ * @returns 블렌딩 처리된 base64 이미지
+ */
+export async function softBlendVTON(imageInput: string): Promise<string> {
+  if (typeof window !== 'undefined') {
+    // 브라우저 환경에서는 원본 반환
+    return imageInput;
+  }
+
+  try {
+    const sharp = require('sharp');
+
+    // base64 데이터 추출
+    const base64Data = imageInput.replace(/^data:image\/\w+;base64,/, '');
+    const imageBuffer = Buffer.from(base64Data, 'base64');
+
+    // 후처리 적용
+    const processedBuffer = await sharp(imageBuffer)
+      // 1. 약간의 블러로 엣지 소프트닝 (0.3 = 미세한 블러)
+      .blur(0.5)
+      // 2. 선명도 약간 낮춤 (sharpen 대신 약한 블러 효과)
+      // 3. 감마 조정으로 자연스러운 톤 (1.1 = 약간 밝게)
+      .gamma(1.05)
+      // 4. 채도 약간 낮춤 (과포화 방지)
+      .modulate({
+        saturation: 0.95, // 5% 채도 감소
+        brightness: 1.0,
+      })
+      .toBuffer();
+
+    console.log('✅ Soft blend applied to VTON result');
+    return `data:image/jpeg;base64,${processedBuffer.toString('base64')}`;
+
+  } catch (error) {
+    console.warn('⚠️ Soft blend failed, using original:', error);
+    return imageInput;
+  }
+}
+
 // ⭐️ 카테고리별 스마트 크롭 (Google Vision API 사용)
 /**
  * 의류 카테고리에 따라 적절한 위치에서 크롭

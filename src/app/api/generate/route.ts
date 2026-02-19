@@ -8,6 +8,7 @@ import {
   IImageGenerationProvider,
   ITryOnProvider,
   smartFaceCrop,
+  softBlendVTON,
 } from '@/lib/providers/base';
 import {
   GenerationRequest,
@@ -226,6 +227,13 @@ export async function POST(request: NextRequest) {
           category: vtonCategory,
           seed: baseSeed + task.shotIndex, // 약간의 변형을 위해 shotIndex 추가
         });
+
+        // ⭐️ 블렌딩 후처리 (합성 느낌 감소 - 엣지 소프트닝, 선명도 조정)
+        try {
+          resultImage = await softBlendVTON(resultImage);
+        } catch (blendError) {
+          console.warn(`⚠️ Soft blend failed for ${task.pose}:`, blendError);
+        }
 
         // ⭐️ 카테고리별 스마트 크롭
         try {
@@ -460,6 +468,13 @@ export async function PUT(request: NextRequest) {
       category: vtonCategory,
       seed: settings.seed,
     });
+
+    // 블렌딩 후처리 (합성 느낌 감소)
+    try {
+      resultImage = await softBlendVTON(resultImage);
+    } catch (blendError) {
+      console.warn('⚠️ Soft blend failed in regeneration:', blendError);
+    }
 
     // 카테고리별 크롭 후처리
     try {
