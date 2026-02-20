@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { UploadedImage, GarmentCategory } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -78,24 +78,9 @@ export default function ImageUploader({
   const [urlInput, setUrlInput] = useState('');
   const [isLoadingUrl, setIsLoadingUrl] = useState(false);
   const [urlError, setUrlError] = useState('');
-  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const styleInputRef = useRef<HTMLInputElement>(null);
   const backgroundSpotInputRef = useRef<HTMLInputElement>(null);
-
-  // 카테고리 드롭다운 외부 클릭 시 닫기
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (editingCategoryId) {
-        setEditingCategoryId(null);
-      }
-    };
-
-    if (editingCategoryId) {
-      document.addEventListener('click', handleClickOutside);
-      return () => document.removeEventListener('click', handleClickOutside);
-    }
-  }, [editingCategoryId]);
 
   // AI 분류 호출
   const classifyGarment = async (imageId: string, imageBase64: string) => {
@@ -126,7 +111,6 @@ export default function ImageUploader({
     if (onCategoryUpdate) {
       onCategoryUpdate(imageId, category, 1.0); // 수동 선택은 신뢰도 100%
     }
-    setEditingCategoryId(null);
   };
 
   const processFiles = useCallback(
@@ -408,6 +392,9 @@ export default function ImageUploader({
           <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
             PNG, JPG, WEBP (최대 {maxImages}장)
           </p>
+          <p className="text-xs mt-2 px-3 py-1.5 rounded" style={{ background: 'rgba(251, 191, 36, 0.15)', color: 'rgb(217, 119, 6)' }}>
+            스트라이프/체크 패턴은 왜곡될 수 있습니다. 단색 의류 권장
+          </p>
         </div>
       </div>
 
@@ -486,25 +473,23 @@ export default function ImageUploader({
                 className="w-full h-full object-cover"
               />
 
-              {/* Overlay */}
-              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRemove(image.id);
-                  }}
-                  className="p-2 rounded-full bg-red-500 hover:bg-red-600 transition-colors"
-                >
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
+              {/* 삭제 버튼 - 우상단 */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemove(image.id);
+                }}
+                className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 hover:bg-red-500 transition-colors opacity-0 group-hover:opacity-100"
+              >
+                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
 
-              {/* Category badge with selector */}
-              <div className="absolute top-2 left-2 flex gap-1">
+              {/* Category badge - 좌하단 중앙, 탭하면 순환 */}
+              <div className="absolute bottom-2 left-2 flex justify-start">
                 {classifyingIds.has(image.id) ? (
-                  <span className="provider-badge flex items-center gap-1">
+                  <span className="px-2 py-1 text-[10px] bg-black/70 rounded flex items-center gap-1 text-white">
                     <svg className="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
                       <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" className="opacity-75" />
@@ -512,64 +497,30 @@ export default function ImageUploader({
                     분류중
                   </span>
                 ) : (
-                  <div className="relative">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingCategoryId(editingCategoryId === image.id ? null : image.id);
-                      }}
-                      className={`provider-badge cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-1 ${
-                        image.category === 'top' ? 'bg-blue-500/20 text-blue-400' :
-                        image.category === 'bottom' ? 'bg-green-500/20 text-green-400' :
-                        image.category === 'dress' ? 'bg-pink-500/20 text-pink-400' :
-                        image.category === 'outer' ? 'bg-orange-500/20 text-orange-400' :
-                        'bg-gray-500/20 text-gray-400'
-                      }`}
-                    >
-                      {image.category ? CATEGORY_LABELS[image.category] : '선택'}
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-
-                    {/* Category dropdown */}
-                    {editingCategoryId === image.id && (
-                      <div
-                        className="absolute top-full left-0 mt-1 z-10 rounded-lg shadow-lg overflow-hidden"
-                        style={{ background: 'var(--background-secondary)', border: '1px solid var(--border)' }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {(['top', 'bottom', 'dress', 'outer'] as GarmentCategory[]).map((cat) => (
-                          <button
-                            key={cat}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleManualCategoryChange(image.id, cat);
-                            }}
-                            className={`w-full px-3 py-2 text-left text-sm transition-colors whitespace-nowrap ${
-                              image.category === cat ? 'font-medium' : ''
-                            }`}
-                            style={{
-                              background: image.category === cat ? 'var(--accent-light)' : 'transparent',
-                              color: image.category === cat ? 'var(--accent)' : 'var(--foreground)',
-                            }}
-                            onMouseEnter={(e) => {
-                              if (image.category !== cat) {
-                                e.currentTarget.style.background = 'var(--background-tertiary)';
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (image.category !== cat) {
-                                e.currentTarget.style.background = 'transparent';
-                              }
-                            }}
-                          >
-                            {CATEGORY_LABELS[cat]}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  /* 탭하면 다음 카테고리로 순환 */
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const categories: GarmentCategory[] = ['top', 'bottom', 'dress', 'outer', 'accessory'];
+                      const currentIndex = categories.indexOf(image.category || 'top');
+                      const nextCategory = categories[(currentIndex + 1) % categories.length];
+                      handleManualCategoryChange(image.id, nextCategory);
+                    }}
+                    className={`h-6 px-2 text-xs rounded-full inline-flex items-center gap-1.5 whitespace-nowrap transition-all ${
+                      image.category === 'top' ? 'bg-blue-500 text-white' :
+                      image.category === 'bottom' ? 'bg-green-500 text-white' :
+                      image.category === 'dress' ? 'bg-pink-500 text-white' :
+                      image.category === 'outer' ? 'bg-orange-500 text-white' :
+                      image.category === 'accessory' ? 'bg-purple-500 text-white' :
+                      'bg-gray-500 text-white'
+                    }`}
+                    title="탭하여 카테고리 변경"
+                  >
+                    <svg className="w-2.5 h-2.5 flex-shrink-0 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
+                    </svg>
+                    {image.category ? CATEGORY_LABELS[image.category] : '선택'}
+                  </button>
                 )}
               </div>
             </div>

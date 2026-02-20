@@ -26,6 +26,7 @@ export interface ModelGenerationOptions {
   seed?: number;
   negativePrompt?: string;
   garmentImage?: string; // base64 이미지 - 이 옷을 입힌 모델 생성
+  garmentCategory?: 'upper_body' | 'lower_body' | 'dresses'; // 의류 카테고리 (프레이밍 조정용)
   styleReferenceImages?: string[]; // base64 이미지 배열 - 이 스타일들을 참조 (최대 10장)
   backgroundSpotImages?: string[]; // base64 이미지 배열 - 이 배경/장소를 참조하여 생성
   customPrompt?: string; // 사용자 정의 프롬프트 (프롬프트 에디터에서 설정)
@@ -75,34 +76,32 @@ export class ProviderRegistry {
   }
 }
 
-// 아이폰 스타일 프롬프트 생성 유틸리티 (VTON 호환 - 전체 얼굴 필요)
-// 레퍼런스: 쇼핑몰 모델컷 스타일 (자연광, 미니멀 배경, 목까지 크롭)
+// 아이폰 스타일 프롬프트 생성 유틸리티
 export function generateIPhoneStylePrompt(pose: PoseType, additionalPrompt?: string): string {
-  // ⚠️ VTON이 신체를 감지하려면 전체 얼굴이 보여야 함 (얼굴 크롭은 VTON 후 후처리로)
   const basePrompt = `
-    iPhone photography style, natural window lighting,
-    young Korean female model with long black wavy hair,
-    full body shot with visible face,
+    iPhone photography style, natural lighting,
+    young Korean female model,
     high-quality fashion lookbook, sharp details,
-    natural skin texture, minimal cozy interior background,
-    white walls, wooden floor, simple furniture,
-    professional fashion e-commerce photography
+    natural skin texture, subtle color grading,
+    professional fashion photography
   `.trim().replace(/\s+/g, ' ');
 
-  // 레퍼런스 모델컷 기반 포즈 프롬프트
+  // ⭐️ Phase 1-1: 얼굴 크롭 일관성 - 모든 포즈에서 동일한 크롭 기준 적용
+  const faceCropStandard = 'CRITICAL FOR ANONYMITY: face must be cropped above lips, showing only chin and lower jaw, eyes and nose must NOT be visible in frame, tight head cropping for privacy';
+
   const posePrompts: Record<PoseType, string> = {
-    front: 'front view, standing straight, arms relaxed at sides, looking slightly off camera, natural stance',
-    back: 'back view, showing garment back details, slight head turn, long hair visible',
-    side: '3/4 angle view, body turned 45 degrees, elegant silhouette, one hand relaxed',
-    sitting: 'sitting on white sofa, leaning back relaxed, one hand on armrest or sofa, legs together side by side, casual lifestyle pose',
-    styled: 'dynamic editorial pose, hand touching hair or near face, natural movement, lifestyle editorial feel',
-    fullbody: 'full body shot from head to toe, standing pose, feet visible, generous framing with floor visible',
+    front: `medium close-up shot from chest to knees, standing casually facing camera, weight on one leg, ${faceCropStandard}, fashion lookbook style`,
+    side: `full body shot from head to feet, side profile angle, looking away naturally, candid walking moment, ${faceCropStandard}, generous framing with environment visible`,
+    back: `full body shot from head to feet, back view, slightly looking over shoulder, ${faceCropStandard}, showing outfit back details`,
+    styled: `medium shot from neck to knees, sitting on chair or adjusting clothes or hand in pocket, ${faceCropStandard}, relaxed editorial feel with natural movement`,
+    sitting: `sitting pose on chair, relaxed casual posture, ${faceCropStandard}, full body visible`,
+    fullbody: `full body shot from head to feet, standing naturally, ${faceCropStandard}, generous framing`,
   };
 
   return `${basePrompt}, ${posePrompts[pose]}${additionalPrompt ? `, ${additionalPrompt}` : ''}`;
 }
 
-// 네거티브 프롬프트 기본값 (VTON 호환 - 얼굴 제한 제거)
+// 네거티브 프롬프트 기본값
 export const DEFAULT_NEGATIVE_PROMPT = `
   low quality, blurry, distorted, deformed, ugly,
   bad anatomy, bad proportions, extra limbs,
@@ -110,199 +109,14 @@ export const DEFAULT_NEGATIVE_PROMPT = `
   oversaturated, artificial lighting
 `.trim().replace(/\s+/g, ' ');
 
-// ⭐️ VTON 결과물 블렌딩 후처리 (합성 느낌 감소)
-/**
- * VTON 결과물의 선명도를 낮추고 엣지를 부드럽게 처리
- * - 모델 외곽선이 배경과 자연스럽게 어우러지도록
- * @param imageInput - base64 이미지
- * @returns 블렌딩 처리된 base64 이미지
- */
-export async function softBlendVTON(imageInput: string): Promise<string> {
-  if (typeof window !== 'undefined') {
-    // 브라우저 환경에서는 원본 반환
-    return imageInput;
-  }
-
-  try {
-    const sharp = require('sharp');
-
-    // base64 데이터 추출
-    const base64Data = imageInput.replace(/^data:image\/\w+;base64,/, '');
-    const imageBuffer = Buffer.from(base64Data, 'base64');
-
-    // 후처리 적용
-    const processedBuffer = await sharp(imageBuffer)
-      // 1. 약간의 블러로 엣지 소프트닝 (0.3 = 미세한 블러)
-      .blur(0.5)
-      // 2. 선명도 약간 낮춤 (sharpen 대신 약한 블러 효과)
-      // 3. 감마 조정으로 자연스러운 톤 (1.1 = 약간 밝게)
-      .gamma(1.05)
-      // 4. 채도 약간 낮춤 (과포화 방지)
-      .modulate({
-        saturation: 0.95, // 5% 채도 감소
-        brightness: 1.0,
-      })
-      .toBuffer();
-
-    console.log('✅ Soft blend applied to VTON result');
-    return `data:image/jpeg;base64,${processedBuffer.toString('base64')}`;
-
-  } catch (error) {
-    console.warn('⚠️ Soft blend failed, using original:', error);
-    return imageInput;
-  }
-}
-
-// ⭐️ 카테고리별 스마트 크롭 (Google Vision API 사용)
-/**
- * 의류 카테고리에 따라 적절한 위치에서 크롭
- * - 상의/원피스: 턱 아래~목 위치에서 크롭 (목이 보이도록)
- * - 하의: 가슴~배꼽 위치에서 크롭
- * @param imageInput - base64 이미지
- * @param category - 의류 카테고리 (upper_body, lower_body, dresses)
- * @returns 크롭된 base64 이미지
- */
-export async function smartFaceCrop(
-  imageInput: string,
-  category: 'upper_body' | 'lower_body' | 'dresses' = 'upper_body'
-): Promise<string> {
-  if (typeof window !== 'undefined') {
-    // 브라우저 환경에서는 fallback으로 고정 비율 크롭
-    const fallbackPercent = category === 'lower_body' ? 35 : 15;
-    return cropTopForPrivacy(imageInput, fallbackPercent);
-  }
-
-  const apiKey = process.env.GOOGLE_CLOUD_API_KEY;
-  if (!apiKey) {
-    console.warn('Google Cloud API key not found, falling back to fixed crop');
-    const fallbackPercent = category === 'lower_body' ? 35 : 15;
-    return cropTopForPrivacy(imageInput, fallbackPercent);
-  }
-
-  try {
-    const sharp = require('sharp');
-
-    // base64 데이터 추출
-    const base64Data = imageInput.replace(/^data:image\/\w+;base64,/, '');
-    const imageBuffer = Buffer.from(base64Data, 'base64');
-
-    // 이미지 메타데이터
-    const metadata = await sharp(imageBuffer).metadata();
-    const { width, height } = metadata;
-
-    if (!width || !height) {
-      const fallbackPercent = category === 'lower_body' ? 35 : 15;
-      return cropTopForPrivacy(imageInput, fallbackPercent);
-    }
-
-    // Google Vision API로 얼굴 감지
-    const visionResponse = await fetch(
-      `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          requests: [{
-            image: { content: base64Data },
-            features: [{ type: 'FACE_DETECTION', maxResults: 1 }]
-          }]
-        })
-      }
-    );
-
-    if (!visionResponse.ok) {
-      console.warn('Vision API failed, falling back to fixed crop');
-      const fallbackPercent = category === 'lower_body' ? 35 : 15;
-      return cropTopForPrivacy(imageInput, fallbackPercent);
-    }
-
-    const visionData = await visionResponse.json();
-    const faces = visionData.responses?.[0]?.faceAnnotations;
-
-    if (!faces || faces.length === 0) {
-      console.log('No face detected, using fixed crop');
-      const fallbackPercent = category === 'lower_body' ? 35 : 15;
-      return cropTopForPrivacy(imageInput, fallbackPercent);
-    }
-
-    // 얼굴 랜드마크 추출
-    const face = faces[0];
-    const landmarks = face.landmarks || [];
-
-    // 카테고리별 크롭 위치 결정
-    let cropY = 0;
-
-    if (category === 'lower_body') {
-      // 하의: 가슴~배꼽 위치에서 크롭 (얼굴 하단에서 더 아래로)
-      // 얼굴 하단 찾기
-      let faceBottom = 0;
-      if (face.boundingPoly?.vertices) {
-        faceBottom = Math.max(...face.boundingPoly.vertices.map((v: {y?: number}) => v.y || 0));
-      }
-      // 얼굴 하단에서 이미지 높이의 15% 더 아래 (대략 가슴~배꼽)
-      cropY = Math.floor(faceBottom + height * 0.15);
-      console.log(`👖 Lower body crop: at y=${cropY} (chest/belly level)`);
-    } else {
-      // 상의/원피스: 턱 아래~목 위치에서 크롭
-      // CHIN 또는 턱 위치 찾기
-      let chinY = 0;
-      for (const landmark of landmarks) {
-        if (landmark.type === 'CHIN_GNATHION' || landmark.type === 'CHIN_LEFT_GONION' || landmark.type === 'CHIN_RIGHT_GONION') {
-          chinY = Math.max(chinY, landmark.position.y);
-        }
-      }
-
-      // 턱 랜드마크가 없으면 얼굴 영역의 하단 사용
-      if (chinY === 0 && face.boundingPoly?.vertices) {
-        const vertices = face.boundingPoly.vertices;
-        chinY = Math.max(...vertices.map((v: {y?: number}) => v.y || 0));
-      }
-
-      if (chinY === 0) {
-        return cropTopForPrivacy(imageInput, 15);
-      }
-
-      // 턱 아래 약간 여유를 두고 크롭 (목이 보이도록)
-      cropY = Math.floor(chinY + 20); // 턱 아래 20px
-      console.log(`👕 Upper body crop: at y=${cropY} (below chin, showing neck)`);
-    }
-
-    const newHeight = height - cropY;
-
-    // 안전 체크
-    if (newHeight < height * 0.4) {
-      console.log('Crop too aggressive, using fixed crop');
-      const fallbackPercent = category === 'lower_body' ? 35 : 15;
-      return cropTopForPrivacy(imageInput, fallbackPercent);
-    }
-
-    const croppedBuffer = await sharp(imageBuffer)
-      .extract({
-        left: 0,
-        top: cropY,
-        width: width,
-        height: newHeight,
-      })
-      .toBuffer();
-
-    console.log(`✅ Smart crop completed for ${category}: cropped at y=${cropY}`);
-    return `data:image/jpeg;base64,${croppedBuffer.toString('base64')}`;
-
-  } catch (error) {
-    console.error('Smart face crop failed:', error);
-    const fallbackPercent = category === 'lower_body' ? 35 : 15;
-    return cropTopForPrivacy(imageInput, fallbackPercent);
-  }
-}
-
-// ⭐️ Phase 1-1: 얼굴 크롭 후처리 - 상단 일정 비율 자르기 (fallback용)
+// ⭐️ Phase 1-1: 얼굴 크롭 후처리 - 상단 일정 비율 자르기
 /**
  * 이미지 상단을 잘라서 얼굴 노출 방지
- * @param imageInput - base64 이미지 또는 URL
- * @param cropPercentage - 잘라낼 상단 비율 (기본 20%)
+ * @param base64Image - base64 인코딩된 이미지 (data:image/... 형식)
+ * @param cropPercentage - 잘라낼 상단 비율 (기본 15%)
  * @returns 크롭된 base64 이미지
  */
-export async function cropTopForPrivacy(imageInput: string, cropPercentage: number = 20): Promise<string> {
+export async function cropTopForPrivacy(imageInput: string, cropPercentage: number = 15): Promise<string> {
   // Node.js 환경에서는 sharp 라이브러리 사용 필요
   // 브라우저 환경에서는 Canvas API 사용
 
@@ -312,30 +126,24 @@ export async function cropTopForPrivacy(imageInput: string, cropPercentage: numb
       const sharp = require('sharp');
 
       let imageBuffer: Buffer;
+      let mimeType = 'image/jpeg';
 
-      // URL인 경우 fetch로 이미지 다운로드
+      // URL인 경우 먼저 다운로드
       if (imageInput.startsWith('http://') || imageInput.startsWith('https://')) {
-        console.log(`Fetching image from URL for cropping...`);
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 30000); // 30초 타임아웃
-
-          const response = await fetch(imageInput, { signal: controller.signal });
-          clearTimeout(timeoutId);
-
-          if (!response.ok) {
-            throw new Error(`Failed to fetch image: ${response.status}`);
-          }
-          const arrayBuffer = await response.arrayBuffer();
-          imageBuffer = Buffer.from(arrayBuffer);
-        } catch (fetchError) {
-          console.error('Failed to fetch image for cropping:', fetchError);
-          return imageInput; // fetch 실패 시 원본 URL 반환
+        console.log(`[cropTopForPrivacy] Downloading image from URL...`);
+        const response = await fetch(imageInput);
+        if (!response.ok) {
+          console.warn(`[cropTopForPrivacy] Failed to download image: ${response.status}`);
+          return imageInput;
         }
+        const arrayBuffer = await response.arrayBuffer();
+        imageBuffer = Buffer.from(arrayBuffer);
+        mimeType = response.headers.get('content-type') || 'image/jpeg';
       } else {
         // base64인 경우
         const base64Data = imageInput.replace(/^data:image\/\w+;base64,/, '');
         imageBuffer = Buffer.from(base64Data, 'base64');
+        mimeType = imageInput.match(/^data:(image\/\w+);base64,/)?.[1] || 'image/jpeg';
       }
 
       // 이미지 메타데이터 가져오기
@@ -351,6 +159,8 @@ export async function cropTopForPrivacy(imageInput: string, cropPercentage: numb
       const cropHeight = Math.floor(height * (cropPercentage / 100));
       const newHeight = height - cropHeight;
 
+      console.log(`[cropTopForPrivacy] Cropping ${cropPercentage}% from top: ${height}px → ${newHeight}px`);
+
       // 크롭 실행
       const croppedBuffer = await sharp(imageBuffer)
         .extract({
@@ -362,8 +172,7 @@ export async function cropTopForPrivacy(imageInput: string, cropPercentage: numb
         .toBuffer();
 
       // base64로 다시 인코딩
-      console.log(`✅ Image cropped successfully (${cropPercentage}% from top)`);
-      return `data:image/jpeg;base64,${croppedBuffer.toString('base64')}`;
+      return `data:${mimeType};base64,${croppedBuffer.toString('base64')}`;
 
     } catch (error) {
       console.error('Image cropping failed:', error);
@@ -401,5 +210,128 @@ export async function cropTopForPrivacy(imageInput: string, cropPercentage: numb
       img.onerror = () => resolve(imageInput);
       img.src = imageInput;
     });
+  }
+}
+
+// ⭐️ 얼굴 감지 기반 크롭 - 입술 아래에서 자르기
+/**
+ * 얼굴 감지를 통해 일관된 위치에서 크롭
+ * 이미지 비율을 분석하고, 전신샷에서 얼굴 위치를 추정하여 입술 아래에서 크롭
+ * @param imageInput - base64 또는 URL 이미지
+ * @param pose - 포즈 타입 (back이면 최소 크롭)
+ * @returns 크롭된 base64 이미지
+ */
+export async function cropWithFaceDetection(imageInput: string, pose?: string): Promise<string> {
+  console.log(`[cropWithFaceDetection] Starting crop for pose: ${pose}, input type: ${imageInput.startsWith('http') ? 'URL' : 'base64'}`);
+
+  if (typeof window !== 'undefined') {
+    console.log('[cropWithFaceDetection] Browser environment, using fallback');
+    return cropTopForPrivacy(imageInput, 18);
+  }
+
+  try {
+    const sharp = require('sharp');
+
+    // 이미지 버퍼 준비
+    let imageBuffer: Buffer;
+    let mimeType = 'image/jpeg';
+
+    if (imageInput.startsWith('http://') || imageInput.startsWith('https://')) {
+      console.log(`[cropWithFaceDetection] Fetching URL: ${imageInput.substring(0, 50)}...`);
+      const response = await fetch(imageInput);
+      if (!response.ok) {
+        console.error(`[cropWithFaceDetection] Fetch failed: ${response.status}`);
+        return cropTopForPrivacy(imageInput, 18);
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      imageBuffer = Buffer.from(arrayBuffer);
+      mimeType = response.headers.get('content-type') || 'image/jpeg';
+      console.log(`[cropWithFaceDetection] Downloaded ${imageBuffer.length} bytes`);
+    } else {
+      const base64Data = imageInput.replace(/^data:image\/\w+;base64,/, '');
+      imageBuffer = Buffer.from(base64Data, 'base64');
+      mimeType = imageInput.match(/^data:(image\/\w+);base64,/)?.[1] || 'image/jpeg';
+      console.log(`[cropWithFaceDetection] Base64 decoded ${imageBuffer.length} bytes`);
+    }
+
+    const metadata = await sharp(imageBuffer).metadata();
+    const { width, height } = metadata;
+    console.log(`[cropWithFaceDetection] Image dimensions: ${width}x${height}`);
+
+    if (!width || !height) {
+      console.error('[cropWithFaceDetection] Invalid dimensions');
+      return cropTopForPrivacy(imageInput, 18);
+    }
+
+    // ⭐️ Google Cloud Vision API로 얼굴 감지
+    const googleApiKey = process.env.GOOGLE_CLOUD_API_KEY;
+    let cropY: number = Math.floor(height * 0.18); // 기본값: 18% 크롭
+    let detectionMethod = 'fallback';
+
+    if (googleApiKey) {
+      try {
+        console.log('[cropWithFaceDetection] Calling Google Cloud Vision Face Detection...');
+        const visionResponse = await fetch(
+          `https://vision.googleapis.com/v1/images:annotate?key=${googleApiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              requests: [{
+                image: { content: imageBuffer.toString('base64') },
+                features: [{ type: 'FACE_DETECTION', maxResults: 1 }]
+              }]
+            })
+          }
+        );
+
+        if (visionResponse.ok) {
+          const visionData = await visionResponse.json();
+          const faces = visionData.responses?.[0]?.faceAnnotations;
+
+          if (faces && faces.length > 0) {
+            const face = faces[0];
+            // boundingPoly의 하단 y좌표 (턱 위치)
+            const vertices = face.boundingPoly?.vertices || [];
+            const chinY = Math.max(...vertices.map((v: { y?: number }) => v.y || 0));
+
+            // 턱 아래 충분한 여유를 두고 크롭 (입술 아래 보장)
+            const margin = Math.floor(height * 0.05); // 5% 여유
+            cropY = Math.min(chinY + margin, Math.floor(height * 0.35)); // 최대 35%까지만
+            cropY = Math.max(cropY, Math.floor(height * 0.18)); // 최소 18% 크롭 (얼굴 작아도 충분히 자름)
+
+            detectionMethod = 'vision-api';
+            console.log(`[cropWithFaceDetection] Face detected! Chin at y=${chinY}, cropping at y=${cropY} (${((cropY/height)*100).toFixed(1)}%)`);
+          } else {
+            console.log('[cropWithFaceDetection] No face detected by Vision API');
+          }
+        } else {
+          console.warn(`[cropWithFaceDetection] Vision API error: ${visionResponse.status}`);
+        }
+      } catch (visionError) {
+        console.warn('[cropWithFaceDetection] Vision API call failed:', visionError);
+      }
+    }
+
+    // Vision API 실패 시 fallback: 18% 고정 크롭
+    if (detectionMethod === 'fallback') {
+      cropY = Math.floor(height * 0.18);
+      console.log(`[cropWithFaceDetection] Using fallback 18% crop: ${cropY}px`);
+    }
+
+    const newHeight = height - cropY;
+    console.log(`[cropWithFaceDetection] Final crop: ${cropY}px from top (${((cropY/height)*100).toFixed(1)}%), method: ${detectionMethod}`);
+
+    const croppedBuffer = await sharp(imageBuffer)
+      .extract({ left: 0, top: cropY, width, height: newHeight })
+      .toBuffer();
+
+    console.log(`[cropWithFaceDetection] Crop successful, output size: ${croppedBuffer.length} bytes`);
+    return `data:${mimeType};base64,${croppedBuffer.toString('base64')}`;
+
+  } catch (error) {
+    console.error('[cropWithFaceDetection] ERROR:', error);
+    console.warn('[cropWithFaceDetection] Returning original image due to error');
+    return imageInput;
   }
 }

@@ -7,8 +7,7 @@ import {
 import {
   IImageGenerationProvider,
   ITryOnProvider,
-  smartFaceCrop,
-  softBlendVTON,
+  cropWithFaceDetection,
 } from '@/lib/providers/base';
 import {
   GenerationRequest,
@@ -32,7 +31,7 @@ function buildPromptFromSettings(promptSettings?: CustomPromptSettings): { baseP
   if (!promptSettings) {
     return {
       basePrompt: '',
-      negativePrompt: 'blurry, low quality, distorted, ugly, deformed, bad anatomy, watermark, signature',
+      negativePrompt: 'blurry, low quality, distorted, ugly, deformed, bad anatomy, watermark, signature, twisted feet, broken ankles, contorted limbs, unnatural pose, extra fingers, missing limbs, bent backwards, impossible angle, dislocated joints, twisted torso, awkward stance, mannequin pose',
     };
   }
 
@@ -152,6 +151,13 @@ export async function POST(request: NextRequest) {
     // 프롬프트 설정에서 최종 프롬프트 빌드
     const { basePrompt, negativePrompt } = buildPromptFromSettings(promptSettings);
 
+    // ⭐️ 일관성을 위한 시드 설정 (모든 포즈에 동일 적용)
+    // 시드가 없으면 랜덤 생성하여 배치 내 일관성 유지
+    if (!settings.seed) {
+      settings.seed = Math.floor(Math.random() * 1000000);
+      console.log(`🎲 Generated consistent seed for batch: ${settings.seed}`);
+    }
+
     // 생성할 이미지 작업 목록 구성
     interface GenerationTask {
       pose: typeof poses[0];
@@ -165,21 +171,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ⭐️ 모델 일관성을 위한 공통 시드 설정
-    // 시드가 없으면 랜덤 생성하여 모든 포즈에 동일하게 적용
-    const baseSeed = settings.seed || Math.floor(Math.random() * 1000000);
-    console.log(`🎲 Using base seed for model consistency: ${baseSeed}`);
-
-    // 모델 일관성을 위한 상세 설명 (모든 포즈에 동일하게 적용)
-    const modelDescription = `same young Korean female model throughout all shots,
-      long black wavy hair, slim figure, natural makeup,
-      consistent appearance and body proportions`.replace(/\s+/g, ' ');
-
-    // 첫 번째 생성된 모델 이미지 (이후 포즈의 스타일 참조로 사용)
-    let referenceModelImage: string | null = null;
-
     // 병렬 이미지 생성 함수
-    async function generateSingleImage(task: GenerationTask, useReference: boolean = false): Promise<GeneratedImage> {
+    async function generateSingleImage(task: GenerationTask): Promise<GeneratedImage> {
       try {
         // Virtual Try-On 필수 체크
         if (!tryOnAvailable) {
@@ -188,60 +181,40 @@ export async function POST(request: NextRequest) {
 
         let modelImage: string;
 
-        // 스타일 참조 이미지 결정
-        // - 사용자가 제공한 참조 이미지가 있으면 사용
-        // - 없으면 첫 번째 생성된 모델을 참조로 사용 (모델 일관성)
-        let effectiveStyleRef = styleReferenceImages;
-        if (!effectiveStyleRef?.length && useReference && referenceModelImage) {
-          effectiveStyleRef = [referenceModelImage];
-          console.log(`🔗 Using first model as reference for consistency (${task.pose})`);
-        }
-
-        // 1. AI로 모델 생성 (모델 일관성을 위해 동일한 시드와 설명 사용)
-        const consistentPrompt = basePrompt
-          ? `${basePrompt}, ${modelDescription}`
-          : modelDescription;
-
+        // ⭐️ 수정: 항상 AI로 새 모델 생성 (참조 이미지는 스타일 가이드로만 사용)
+        // ⭐️ 일관성: 모든 포즈에 동일한 시드 사용 (같은 모델 유지)
+        console.log(`Generating NEW model for ${task.pose} (category: ${vtonCategory}, seed: ${settings.seed || 'random'})`);
         modelImage = await imageProvider.generateModelImage({
           pose: task.pose,
           style: settings.modelStyle,
-          seed: baseSeed, // 모든 포즈에 동일한 시드 사용
+          seed: settings.seed,
           negativePrompt: negativePrompt || settings.negativePrompt,
+          garmentImage, // 의류 이미지 전달 (뒷면도 색상/스타일 참조 필요)
+          garmentCategory: vtonCategory,
+          styleReferenceImages,
           backgroundSpotImages,
-          customPrompt: consistentPrompt,
-          styleReferenceImages: effectiveStyleRef,
+          customPrompt: basePrompt,
         });
 
-        // 첫 번째 이미지면 참조용으로 저장
-        if (!referenceModelImage) {
-          referenceModelImage = modelImage;
-          console.log(`📌 First model image saved as reference`);
-        }
-
         // 2. Virtual Try-On 필수 적용 (의류만 교체)
-        console.log(`👗 Applying VTON for ${task.pose} pose (category: ${vtonCategory})...`);
+        // ⭐️ Phase 1-2: 자동 분류된 카테고리 사용
+        // 주의: VTON은 전신(얼굴 포함)이 필요하므로 크롭 전에 실행
         let resultImage = await tryOnProvider.tryOn({
           garmentImage,
           modelImage,
           pose: task.pose,
-          category: vtonCategory,
-          seed: baseSeed + task.shotIndex, // 약간의 변형을 위해 shotIndex 추가
+          category: vtonCategory, // 자동 분류 또는 사용자 지정 카테고리
+          seed: settings.seed ? settings.seed + task.shotIndex : undefined, // 각 컷마다 다른 시드
         });
 
-        // ⭐️ 블렌딩 후처리 (합성 느낌 감소 - 엣지 소프트닝, 선명도 조정)
+        // ⭐️ Phase 1-1: 얼굴 크롭 (이미지 비율 기반 스마트 크롭)
         try {
-          resultImage = await softBlendVTON(resultImage);
-        } catch (blendError) {
-          console.warn(`⚠️ Soft blend failed for ${task.pose}:`, blendError);
-        }
-
-        // ⭐️ 카테고리별 스마트 크롭
-        try {
-          console.log(`Applying smart crop (${vtonCategory}) to VTON result for ${task.pose}...`);
-          resultImage = await smartFaceCrop(resultImage, vtonCategory);
-          console.log(`✅ Smart crop completed for ${task.pose} (${vtonCategory})`);
+          console.log(`Applying smart face crop for ${task.pose}...`);
+          resultImage = await cropWithFaceDetection(resultImage, task.pose);
+          console.log(`✅ Face cropped successfully for ${task.pose}`);
         } catch (cropError) {
           console.warn(`⚠️ Face crop failed for ${task.pose}:`, cropError);
+          // 크롭 실패 시 VTON 결과 그대로 사용
         }
 
         return {
@@ -249,86 +222,22 @@ export async function POST(request: NextRequest) {
           url: resultImage,
           pose: task.pose,
           timestamp: Date.now(),
-          settings: { ...settings, seed: baseSeed }, // 사용된 시드 저장
-          provider: effectiveStyleRef?.length
-            ? `${providers.imageGeneration} + ${providers.tryOn} (Consistent)`
+          settings,
+          provider: styleReferenceImages && styleReferenceImages.length > 0
+            ? `${providers.tryOn} (Reference-based)`
             : `${providers.imageGeneration} + ${providers.tryOn}`,
         };
       } catch (error) {
         console.error(`Error generating image for pose ${task.pose}, shot ${task.shotIndex}:`, error);
-        throw error;
+        throw error; // Try-On 실패는 전체 요청 실패로 처리
       }
     }
 
-    // ⭐️ 타임아웃 경고 (4개 이상 포즈 시)
-    const TIMEOUT_WARNING_THRESHOLD = 4;
-    if (tasks.length >= TIMEOUT_WARNING_THRESHOLD) {
-      console.warn(`⚠️ ${tasks.length}개 이미지 생성 요청 - 60초 타임아웃 초과 가능성 있음`);
-    }
-
-    // ⭐️ 모델 일관성을 위해 첫 번째 이미지는 먼저 생성
-    console.log(`Starting generation with model consistency (${tasks.length} images)...`);
+    // 모든 이미지 병렬 생성 (Promise.all 사용)
+    console.log(`Starting parallel generation of ${tasks.length} images...`);
     const startTime = Date.now();
-    const SOFT_TIMEOUT = 50000; // 50초 (60초 타임아웃 전에 응답)
 
-    // 첫 번째 작업 먼저 실행 (참조 모델 생성)
-    const firstTask = tasks[0];
-    const remainingTasks = tasks.slice(1);
-
-    let firstResult: GeneratedImage | null = null;
-    try {
-      firstResult = await generateSingleImage(firstTask, false);
-      console.log(`✅ First model generated successfully for ${firstTask.pose} (${(Date.now() - startTime) / 1000}s)`);
-    } catch (error) {
-      console.error(`❌ First model generation failed:`, error);
-    }
-
-    // 남은 시간 체크
-    const elapsedTime = Date.now() - startTime;
-    const remainingTime = SOFT_TIMEOUT - elapsedTime;
-
-    let remainingResults: PromiseSettledResult<GeneratedImage>[] = [];
-
-    if (remainingTime > 10000 && remainingTasks.length > 0) {
-      // 10초 이상 남았으면 나머지 작업 진행
-      console.log(`⏱️ ${Math.round(remainingTime / 1000)}s remaining, processing ${remainingTasks.length} more tasks...`);
-
-      // 타임아웃 레이스: 남은 시간 내에 완료된 것만 취합
-      const timeoutPromise = new Promise<'timeout'>((resolve) =>
-        setTimeout(() => resolve('timeout'), remainingTime)
-      );
-
-      const tasksPromise = Promise.allSettled(
-        remainingTasks.map(task => generateSingleImage(task, true))
-      );
-
-      const raceResult = await Promise.race([tasksPromise, timeoutPromise]);
-
-      if (raceResult === 'timeout') {
-        console.warn(`⏰ Soft timeout reached, returning partial results`);
-        // 타임아웃이면 빈 결과
-        remainingResults = remainingTasks.map(() => ({
-          status: 'rejected' as const,
-          reason: new Error('Timeout - 시간 초과'),
-        }));
-      } else {
-        remainingResults = raceResult;
-      }
-    } else if (remainingTasks.length > 0) {
-      console.warn(`⏰ Not enough time for remaining tasks (${Math.round(remainingTime / 1000)}s left)`);
-      remainingResults = remainingTasks.map(() => ({
-        status: 'rejected' as const,
-        reason: new Error('Skipped - 시간 부족'),
-      }));
-    }
-
-    // 결과 취합
-    const results: PromiseSettledResult<GeneratedImage>[] = [
-      firstResult
-        ? { status: 'fulfilled' as const, value: firstResult }
-        : { status: 'rejected' as const, reason: new Error('First model generation failed') },
-      ...remainingResults,
-    ];
+    const results = await Promise.allSettled(tasks.map(task => generateSingleImage(task)));
 
     const generatedImages: GeneratedImage[] = [];
     const errors: string[] = [];
@@ -344,17 +253,11 @@ export async function POST(request: NextRequest) {
 
     console.log(`Parallel generation completed in ${(Date.now() - startTime) / 1000}s - ${generatedImages.length}/${tasks.length} successful`);
 
-    // 타임아웃 관련 에러인지 체크
-    const hasTimeoutError = errors.some(e => e.includes('Timeout') || e.includes('시간'));
-    const timeoutHint = hasTimeoutError ? ' 포즈 수를 3개 이하로 줄여보세요.' : '';
-
     if (generatedImages.length === 0) {
       return NextResponse.json(
         {
           success: false,
-          error: hasTimeoutError
-            ? `시간 초과로 이미지 생성에 실패했습니다.${timeoutHint}`
-            : 'Virtual Try-On에 실패했습니다.',
+          error: 'Virtual Try-On에 실패했습니다.',
           details: errors.join(', ')
         },
         { status: 500 }
@@ -363,7 +266,6 @@ export async function POST(request: NextRequest) {
 
     // 일부 실패한 경우 경고 포함
     const partialSuccess = generatedImages.length < tasks.length;
-    const timeoutWarning = hasTimeoutError ? ` (일부 시간 초과 -${timeoutHint})` : '';
 
     // Notion 로깅 (비동기 - 응답을 지연시키지 않음)
     if (process.env.NOTION_API_KEY && process.env.NOTION_DATABASE_ID) {
@@ -393,7 +295,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       images: generatedImages,
-      warnings: partialSuccess ? [...errors, timeoutWarning].filter(Boolean) : undefined,
+      warnings: partialSuccess ? errors : undefined,
     });
   } catch (error) {
     console.error('Generation error:', error);
@@ -458,30 +360,17 @@ export async function PUT(request: NextRequest) {
       style: settings.modelStyle,
       seed: settings.seed,
       negativePrompt: settings.negativePrompt,
-      styleReferenceImages, // 스타일 참조용 (조명/배경/분위기만)
+      garmentImage,
+      styleReferenceImages,
     });
 
-    let resultImage = await tryOnProvider.tryOn({
+    const resultImage = await tryOnProvider.tryOn({
       garmentImage,
       modelImage,
       pose,
       category: vtonCategory,
       seed: settings.seed,
     });
-
-    // 블렌딩 후처리 (합성 느낌 감소)
-    try {
-      resultImage = await softBlendVTON(resultImage);
-    } catch (blendError) {
-      console.warn('⚠️ Soft blend failed in regeneration:', blendError);
-    }
-
-    // 카테고리별 크롭 후처리
-    try {
-      resultImage = await smartFaceCrop(resultImage, vtonCategory);
-    } catch (cropError) {
-      console.warn('⚠️ Face crop failed in regeneration:', cropError);
-    }
 
     return NextResponse.json({
       success: true,
@@ -491,9 +380,7 @@ export async function PUT(request: NextRequest) {
         pose,
         timestamp: Date.now(),
         settings,
-        provider: styleReferenceImages?.length
-          ? `${providers.imageGeneration} + ${providers.tryOn} (Style Ref)`
-          : `${providers.imageGeneration} + ${providers.tryOn}`,
+        provider: `${providers.imageGeneration} + ${providers.tryOn}`,
       } as GeneratedImage,
     });
   } catch (error) {

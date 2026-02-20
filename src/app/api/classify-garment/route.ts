@@ -24,14 +24,14 @@ interface ClassifyResponse {
   error?: string;
 }
 
-// 카테고리별 최적화된 포즈 추천
+// 카테고리별 최적화된 포즈 추천 (back 제외 - Gemini가 뒷모습 생성 불가)
 export const CATEGORY_POSES: Record<GarmentCategory, string[]> = {
-  top: ['front', 'back', 'detail'],
-  bottom: ['front', 'side', 'detail'],
-  dress: ['front', 'side', 'back', 'styled'],
-  outer: ['front', 'back', 'styled'],
-  accessory: ['detail'],
-  unknown: ['front', 'side', 'back'],
+  top: ['front', 'side', 'styled', 'sitting', 'fullbody'],
+  bottom: ['front', 'side', 'styled', 'sitting', 'fullbody'],
+  dress: ['front', 'side', 'styled', 'sitting', 'fullbody'],
+  outer: ['front', 'side', 'styled', 'sitting', 'fullbody'],
+  accessory: ['front', 'styled'],
+  unknown: ['front', 'side', 'styled', 'sitting', 'fullbody'],
 };
 
 // 카테고리별 프롬프트 힌트
@@ -49,6 +49,14 @@ const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
 });
 
+// 타임아웃 헬퍼
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms))
+  ]);
+}
+
 // POST: 의류 이미지 분류
 export async function POST(request: NextRequest) {
   try {
@@ -62,42 +70,52 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // BLIP 또는 LLaVA를 사용한 이미지 분석
-    // Replicate의 BLIP-2 모델 사용
-    const output = await replicate.run(
-      "salesforce/blip:2e1dddc8621f72155f24cf2e0adbde548458d3cab9f00c0139eea840d0ac4746",
-      {
-        input: {
-          image: image,
-          task: "image_captioning",
-        },
-      }
-    );
+    // BLIP 모델 호출 (8초 타임아웃)
+    try {
+      const output = await withTimeout(
+        replicate.run(
+          "salesforce/blip:2e1dddc8621f72155f24cf2e0adbde548458d3cab9f00c0139eea840d0ac4746",
+          {
+            input: {
+              image: image,
+              task: "image_captioning",
+            },
+          }
+        ),
+        8000 // 8초 타임아웃
+      );
 
-    const caption = typeof output === 'string' ? output : String(output);
-    console.log('🔍 BLIP-2 Caption:', caption);
+      const caption = typeof output === 'string' ? output : String(output);
+      console.log('🔍 BLIP-2 Caption:', caption);
 
-    // 캡션에서 카테고리 추출
-    const category = extractCategory(caption.toLowerCase());
-    console.log(`📊 Classification: ${category.type} (confidence: ${(category.confidence * 100).toFixed(1)}%)`);
-    const details = extractDetails(caption.toLowerCase());
+      const category = extractCategory(caption.toLowerCase());
+      console.log(`📊 Classification: ${category.type} (confidence: ${(category.confidence * 100).toFixed(1)}%)`);
+      const details = extractDetails(caption.toLowerCase());
 
-    const response: ClassifyResponse = {
-      success: true,
-      category: category.type,
-      confidence: category.confidence,
-      details,
-    };
-
-    return NextResponse.json(response);
+      return NextResponse.json({
+        success: true,
+        category: category.type,
+        confidence: category.confidence,
+        details,
+      });
+    } catch (timeoutError) {
+      // 타임아웃 시 기본값 'dress' 반환
+      console.warn('⏱️ Classification timeout, defaulting to dress');
+      return NextResponse.json({
+        success: true,
+        category: 'dress' as GarmentCategory,
+        confidence: 0.3,
+        details: {},
+        error: '분류 시간 초과, 기본값 사용',
+      });
+    }
   } catch (error) {
     console.error('Garment classification error:', error);
 
-    // API 호출 실패 시 기본 분류 시도 (이미지 비율 기반)
     return NextResponse.json({
       success: true,
-      category: 'unknown' as GarmentCategory,
-      confidence: 0,
+      category: 'dress' as GarmentCategory,
+      confidence: 0.3,
       details: {},
       error: 'AI 분류 실패, 기본값 사용',
     });
@@ -109,24 +127,29 @@ function extractCategory(caption: string): { type: GarmentCategory; confidence: 
   // 카테고리별 키워드 및 가중치
   const keywords: Record<GarmentCategory, { words: string[]; priority: number }> = {
     dress: {
-      words: ['dress', 'gown', 'one-piece', 'onepiece', 'romper', 'jumpsuit', 'maxi', 'midi', 'mini dress'],
-      priority: 3 // 최우선
+      words: [
+        'dress', 'gown', 'one-piece', 'onepiece', 'romper', 'jumpsuit',
+        'maxi', 'midi', 'mini dress', 'sundress', 'frock', 'tunic',
+        'long dress', 'short dress', 'sleeveless dress', 'floral dress',
+        'black dress', 'white dress', 'wearing a', 'woman in a'
+      ],
+      priority: 4 // 최우선 (더 높은 우선순위)
     },
     top: {
-      words: ['shirt', 'blouse', 't-shirt', 'tee', 'top', 'sweater', 'hoodie', 'polo', 'tank'],
+      words: ['shirt', 'blouse', 't-shirt', 'tee', 'top', 'sweater', 'hoodie', 'polo', 'tank', 'crop top', 'knit'],
       priority: 2
     },
     bottom: {
-      words: ['pants', 'jeans', 'skirt', 'shorts', 'trousers', 'leggings', 'slacks'],
+      words: ['pants', 'jeans', 'skirt', 'shorts', 'trousers', 'leggings', 'slacks', 'culottes'],
       priority: 2
     },
     outer: {
-      words: ['jacket', 'coat', 'cardigan', 'blazer', 'vest', 'parka', 'windbreaker', 'overcoat'],
+      words: ['jacket', 'coat', 'cardigan', 'blazer', 'vest', 'parka', 'windbreaker', 'overcoat', 'trench'],
       priority: 2
     },
     accessory: {
-      words: ['bag', 'purse', 'hat', 'cap', 'scarf', 'belt', 'watch', 'jewelry', 'sunglasses', 'necklace', 'bracelet'],
-      priority: 1 // 최후순위 (shoes 제거 - 의류 사진에 자주 등장)
+      words: ['bag', 'purse', 'hat', 'cap', 'scarf', 'belt', 'watch', 'jewelry', 'sunglasses', 'necklace', 'bracelet', 'handbag', 'clutch'],
+      priority: 1 // 최후순위 - 명확한 액세서리 키워드만
     },
     unknown: { words: [], priority: 0 },
   };
@@ -160,11 +183,20 @@ function extractCategory(caption: string): { type: GarmentCategory; confidence: 
   // 신뢰도 계산 (0-1)
   let confidence = maxScore > 0 ? Math.min(maxScore / 2, 1) : 0;
 
-  // ⚠️ 신뢰도 검증: accessory나 unknown으로 분류되었고 신뢰도가 낮으면 dress로 기본 설정
-  if ((bestMatch === 'accessory' || bestMatch === 'unknown') && confidence < 0.5) {
-    console.warn(`⚠️ Low confidence classification: ${bestMatch} (${confidence}), defaulting to 'dress'`);
+  // ⚠️ 액세서리 분류는 매우 엄격하게: 명확한 액세서리 단어가 있어야만 인정
+  const strictAccessoryWords = ['handbag', 'purse', 'backpack', 'wallet', 'clutch bag', 'tote bag', 'shoulder bag'];
+  const isStrictAccessory = strictAccessoryWords.some(word => caption.includes(word));
+
+  // ⚠️ 신뢰도 검증 강화:
+  // accessory는 매우 명확한 경우에만 유지, 그 외에는 모두 dress로 변경
+  if (bestMatch === 'accessory' && !isStrictAccessory) {
+    console.warn(`⚠️ Accessory classification overridden: not a strict accessory match, defaulting to 'dress'`);
     bestMatch = 'dress';
-    confidence = 0.3; // 낮은 신뢰도 표시
+    confidence = 0.4;
+  } else if (bestMatch === 'unknown') {
+    console.warn(`⚠️ Unknown classification, defaulting to 'dress'`);
+    bestMatch = 'dress';
+    confidence = 0.3;
   }
 
   return { type: bestMatch, confidence };

@@ -23,9 +23,87 @@ export default function ResultGallery({
   const [selectedPose, setSelectedPose] = useState<PoseType | 'all'>('all');
   const [selectedImage, setSelectedImage] = useState<GeneratedImage | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+  const imageContainerRef = useRef<HTMLDivElement>(null);
   const [isDownloadingZip, setIsDownloadingZip] = useState(false);
   const [upscalingIds, setUpscalingIds] = useState<Set<string>>(new Set());
   const [upscaleError, setUpscaleError] = useState<string | null>(null);
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [zoomOrigin, setZoomOrigin] = useState({ x: 50, y: 50 }); // 퍼센트 기준
+  const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(new Set()); // 체크박스 선택
+  const [isDownloadingSelected, setIsDownloadingSelected] = useState(false);
+
+  // 드래그 상태
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [imageOffset, setImageOffset] = useState({ x: 0, y: 0 });
+
+  // 줌 리셋 (이미지 변경 시)
+  useEffect(() => {
+    setZoomLevel(1);
+    setZoomOrigin({ x: 50, y: 50 });
+    setImageOffset({ x: 0, y: 0 });
+  }, [selectedImage]);
+
+  // 클릭 줌 핸들러 (클릭한 위치로 줌인/줌아웃 토글)
+  const handleImageClick = useCallback((e: React.MouseEvent<HTMLImageElement>) => {
+    // 드래그 중이었으면 클릭 무시
+    if (isDragging) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+
+    if (zoomLevel === 1) {
+      // 줌인: 클릭한 위치를 중심으로 2배 확대
+      setZoomOrigin({ x, y });
+      setZoomLevel(2);
+      setImageOffset({ x: 0, y: 0 });
+    } else {
+      // 줌아웃: 원래 크기로
+      setZoomLevel(1);
+      setZoomOrigin({ x: 50, y: 50 });
+      setImageOffset({ x: 0, y: 0 });
+    }
+  }, [zoomLevel, isDragging]);
+
+  // 드래그 시작
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLImageElement>) => {
+    if (zoomLevel <= 1) return; // 줌인 상태에서만 드래그 가능
+    e.preventDefault();
+    setIsDragging(true);
+    setDragStart({ x: e.clientX - imageOffset.x, y: e.clientY - imageOffset.y });
+  }, [zoomLevel, imageOffset]);
+
+  // 드래그 중
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isDragging || zoomLevel <= 1) return;
+    e.preventDefault();
+    const newX = e.clientX - dragStart.x;
+    const newY = e.clientY - dragStart.y;
+    setImageOffset({ x: newX, y: newY });
+  }, [isDragging, dragStart, zoomLevel]);
+
+  // 드래그 종료
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  // 스크롤 줌 핸들러 (non-passive 이벤트로 등록하여 스크롤 방지)
+  useEffect(() => {
+    const container = imageContainerRef.current;
+    if (!container || !selectedImage) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      setZoomLevel(prev => Math.min(Math.max(prev + delta, 0.5), 3));
+    };
+
+    // passive: false로 설정해야 preventDefault가 작동함
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheel);
+  }, [selectedImage]);
 
   // 이미지 업스케일
   const handleUpscale = async (image: GeneratedImage) => {
@@ -130,6 +208,71 @@ export default function ResultGallery({
     }
   };
 
+  // 이미지 선택 토글
+  const toggleImageSelection = (imageId: string) => {
+    setSelectedImageIds(prev => {
+      const next = new Set(prev);
+      if (next.has(imageId)) {
+        next.delete(imageId);
+      } else {
+        next.add(imageId);
+      }
+      return next;
+    });
+  };
+
+  // 전체 선택/해제
+  const toggleSelectAll = () => {
+    if (selectedImageIds.size === filteredImages.length) {
+      setSelectedImageIds(new Set());
+    } else {
+      setSelectedImageIds(new Set(filteredImages.map(img => img.id)));
+    }
+  };
+
+  // 선택된 이미지 업스케일 후 다운로드
+  const handleDownloadSelected = async () => {
+    if (selectedImageIds.size === 0) return;
+
+    setIsDownloadingSelected(true);
+    const selectedImages = images.filter(img => selectedImageIds.has(img.id));
+
+    try {
+      for (const image of selectedImages) {
+        // 업스케일 요청
+        const response = await fetch('/api/upscale', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            image: image.url,
+            scale: 2,
+            model: 'real-esrgan',
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.upscaledImage) {
+            // 업스케일된 이미지 다운로드
+            const a = document.createElement('a');
+            a.href = data.upscaledImage;
+            a.download = `fashion_${image.pose}_${image.id.slice(0, 8)}_2x.png`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          }
+        }
+      }
+      // 다운로드 완료 후 선택 해제
+      setSelectedImageIds(new Set());
+    } catch (err) {
+      console.error('Download error:', err);
+      setUpscaleError('다운로드 중 오류가 발생했습니다.');
+    } finally {
+      setIsDownloadingSelected(false);
+    }
+  };
+
   const filteredImages = selectedPose === 'all'
     ? images
     : images.filter((img) => img.pose === selectedPose);
@@ -189,35 +332,58 @@ export default function ResultGallery({
         )}
 
         {images.length > 0 && (
-          <div className="flex gap-2">
-            <button onClick={onDownloadAll} className="btn-secondary flex items-center gap-2">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              개별 다운로드
-            </button>
-            <button
-              onClick={handleDownloadZip}
-              disabled={isDownloadingZip}
-              className="btn-primary flex items-center gap-2"
-            >
-              {isDownloadingZip ? (
-                <>
-                  <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
-                    <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" className="opacity-75" />
-                  </svg>
-                  ZIP 생성중...
-                </>
-              ) : (
-                <>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-                  </svg>
-                  ZIP 다운로드
-                </>
-              )}
-            </button>
+          <div className="flex flex-col gap-2 items-end">
+            <div className="flex gap-2">
+              {/* 선택 다운로드 버튼 */}
+              <button
+                onClick={handleDownloadSelected}
+                disabled={selectedImageIds.size === 0 || isDownloadingSelected}
+                className="btn-primary flex items-center gap-2 disabled:opacity-50"
+              >
+                {isDownloadingSelected ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
+                      <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" className="opacity-75" />
+                    </svg>
+                    업스케일 중...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    선택 다운로드 ({selectedImageIds.size})
+                  </>
+                )}
+              </button>
+              <button
+                onClick={handleDownloadZip}
+                disabled={isDownloadingZip}
+                className="btn-secondary flex items-center gap-2"
+              >
+                {isDownloadingZip ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
+                      <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" className="opacity-75" />
+                    </svg>
+                    ZIP 생성중...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                    </svg>
+                    ZIP 다운로드
+                  </>
+                )}
+              </button>
+            </div>
+            {/* 자동 업스케일 안내 */}
+            <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+              ✨ 선택 다운로드 시 자동 업스케일 (2x) 적용
+            </span>
           </div>
         )}
       </div>
@@ -271,16 +437,43 @@ export default function ResultGallery({
         </div>
       )}
 
-      {/* Image Grid */}
+      {/* Select All + Image Grid */}
       {filteredImages.length > 0 && (
-        <div className="image-grid">
-          {filteredImages.map((image) => (
-            <div
-              key={image.id}
-              className="result-card cursor-pointer"
-              onClick={() => setSelectedImage(image)}
-            >
-              <img src={image.url} alt={`Generated ${image.pose}`} />
+        <>
+          {/* 전체 선택 체크박스 */}
+          <div className="flex items-center gap-2 mb-2">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={selectedImageIds.size === filteredImages.length && filteredImages.length > 0}
+                onChange={toggleSelectAll}
+                className="w-4 h-4 rounded border-gray-600 bg-transparent accent-blue-500"
+              />
+              <span className="text-sm" style={{ color: 'var(--foreground-muted)' }}>
+                전체 선택 ({selectedImageIds.size}/{filteredImages.length})
+              </span>
+            </label>
+          </div>
+          <div className="image-grid">
+            {filteredImages.map((image) => (
+              <div
+                key={image.id}
+                className={`result-card cursor-pointer relative ${selectedImageIds.has(image.id) ? 'ring-2 ring-blue-500' : ''}`}
+                onClick={() => setSelectedImage(image)}
+              >
+                {/* 체크박스 */}
+                <div
+                  className="absolute top-2 right-2 z-10"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedImageIds.has(image.id)}
+                    onChange={() => toggleImageSelection(image.id)}
+                    className="w-5 h-5 rounded border-gray-600 bg-black/50 accent-blue-500 cursor-pointer"
+                  />
+                </div>
+                <img src={image.url} alt={`Generated ${image.pose}`} />
               <div className="result-card-overlay">
                 <div className="flex gap-2">
                   <button
@@ -345,7 +538,8 @@ export default function ResultGallery({
               </div>
             </div>
           ))}
-        </div>
+          </div>
+        </>
       )}
 
       {/* Image Modal */}
@@ -361,12 +555,33 @@ export default function ResultGallery({
             else if (e.key === 'Escape') { setSelectedImage(null); }
           }}
         >
-          <div className="relative max-w-4xl max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+          <div
+            ref={imageContainerRef}
+            className="relative max-w-4xl max-h-[90vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+          >
             <img
               src={selectedImage.url}
               alt={`Generated ${selectedImage.pose}`}
-              className="max-w-full max-h-[90vh] rounded-lg object-contain"
+              className="max-w-full max-h-[90vh] rounded-lg object-contain transition-transform duration-200 select-none"
+              draggable={false}
+              style={{
+                transform: `scale(${zoomLevel}) translate(${imageOffset.x / zoomLevel}px, ${imageOffset.y / zoomLevel}px)`,
+                transformOrigin: `${zoomOrigin.x}% ${zoomOrigin.y}%`,
+                cursor: zoomLevel === 1 ? 'zoom-in' : isDragging ? 'grabbing' : 'grab',
+              }}
+              onClick={handleImageClick}
+              onMouseDown={handleMouseDown}
             />
+            {/* 줌 레벨 표시 */}
+            {zoomLevel !== 1 && (
+              <div className="absolute bottom-4 left-4 px-2 py-1 bg-black/60 rounded text-white text-sm">
+                {Math.round(zoomLevel * 100)}%
+              </div>
+            )}
             <button
               onClick={() => setSelectedImage(null)}
               className="absolute top-4 right-4 p-2 rounded-full bg-black/50 hover:bg-black/70 transition-colors"

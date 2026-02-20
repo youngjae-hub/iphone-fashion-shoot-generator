@@ -25,14 +25,15 @@ export interface PoseConfig {
   enabled: boolean;
 }
 
-// 기본 포즈 설정
+// 기본 포즈 설정 (뒷면은 VTON에서 디테일 손실이 심해 비활성화)
 export const DEFAULT_POSES: PoseConfig[] = [
   { type: 'front', label: 'Front', labelKr: '정면', promptEn: 'front view, standing straight, arms relaxed at sides', enabled: true },
-  { type: 'back', label: 'Back', labelKr: '뒷면', promptEn: 'back view, showing back of garment, slight head turn', enabled: true },
+  { type: 'styled', label: 'Styled', labelKr: '연출', promptEn: 'hand touching hair or near face, natural dynamic pose, lifestyle editorial feel', enabled: true },
   { type: 'side', label: 'Side', labelKr: '측면', promptEn: '3/4 angle view, slightly turned body, elegant silhouette', enabled: true },
   { type: 'sitting', label: 'Sitting', labelKr: '앉은', promptEn: 'sitting on sofa or chair, relaxed pose, legs crossed or together', enabled: true },
-  { type: 'styled', label: 'Styled', labelKr: '연출', promptEn: 'hand touching hair or near face, natural dynamic pose, lifestyle editorial feel', enabled: true },
   { type: 'fullbody', label: 'Full Body', labelKr: '전신', promptEn: 'full body shot showing feet, standing pose, head to toe visible', enabled: true },
+  // 뒷면은 VTON에서 의류 디테일이 심하게 왜곡되어 제외
+  // { type: 'back', label: 'Back', labelKr: '뒷면', promptEn: 'back view, showing back of garment, slight head turn', enabled: false },
 ];
 
 // IDM-VTON Garment Categories
@@ -131,9 +132,9 @@ export const DEFAULT_PROVIDER_CONFIG: ProviderConfig = {
 export const DEFAULT_GENERATION_SETTINGS: GenerationSettings = {
   modelStyle: 'iphone-natural',
   backgroundStyle: 'minimal-studio',
-  poses: ['front', 'styled', 'back'], // 기본 3개 (60초 타임아웃 내 처리 가능)
+  poses: ['front', 'side', 'styled', 'sitting', 'fullbody'], // 기본 5개 포즈 (back 제외 - Gemini 한계)
   shotsPerPose: 1,
-  totalShots: 3,
+  totalShots: 5,
 };
 
 // POSE_CONFIGS는 DEFAULT_POSES를 사용 (위에서 정의됨)
@@ -319,7 +320,7 @@ export const DEFAULT_CUSTOM_PROMPT_SETTINGS: CustomPromptSettings = {
   useCustomPrompt: false,
   basePrompt: '',
   styleModifiers: [],
-  negativePrompt: 'blurry, low quality, distorted, ugly, deformed, bad anatomy, watermark, signature',
+  negativePrompt: 'blurry, low quality, distorted, ugly, deformed, bad anatomy, watermark, signature, twisted feet, broken ankles, contorted limbs, unnatural pose, extra fingers, missing limbs',
   templateId: 'iphone-natural',
 };
 
