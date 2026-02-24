@@ -1,6 +1,6 @@
 'use client';
 
-import { ProviderConfig, ImageGenerationProvider, TryOnProvider } from '@/types';
+import { ProviderConfig, ImageGenerationProvider, TryOnProvider, PoseMode } from '@/types';
 import HelpTooltip from './HelpTooltip';
 
 interface ProviderSelectorProps {
@@ -22,6 +22,11 @@ const IMAGE_GENERATION_OPTIONS: { value: ImageGenerationProvider; label: string;
 const TRYON_OPTIONS: { value: TryOnProvider; label: string; description: string }[] = [
   { value: 'idm-vton', label: 'IDM-VTON', description: '고품질 가상 피팅' },
   { value: 'kolors-virtual-tryon', label: 'Kolors VTON', description: 'Kwai 가상 피팅' },
+];
+
+const POSE_MODE_OPTIONS: { value: PoseMode; label: string; description: string }[] = [
+  { value: 'auto', label: '자동 (기본)', description: '프롬프트 기반으로 포즈 생성' },
+  { value: 'controlnet', label: 'ControlNet', description: '스켈레톤으로 정확한 포즈 제어 (실험적)' },
 ];
 
 export default function ProviderSelector({
@@ -161,6 +166,59 @@ export default function ProviderSelector({
                       API 키 필요
                     </span>
                   )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Pose Mode (Phase 2-1) */}
+      <div className="settings-group">
+        <label className="settings-label flex items-center gap-2">
+          포즈 제어 모드
+          <HelpTooltip title="포즈 제어 모드란?">
+            <p className="mb-2">AI가 모델의 <strong>포즈</strong>를 생성하는 방식을 선택합니다.</p>
+            <ul className="list-disc list-inside space-y-1">
+              <li><strong>자동 (기본):</strong> 프롬프트 텍스트로 포즈 생성 - 안정적</li>
+              <li><strong>ControlNet:</strong> 스켈레톤 이미지로 정확한 포즈 제어 - 실험적이지만 뒷면 포즈에 유리</li>
+            </ul>
+            <p className="mt-2 text-[11px]">💡 뒷면(back) 포즈가 잘 안 나올 때 ControlNet을 시도해보세요!</p>
+          </HelpTooltip>
+          <span className="text-xs px-2 py-0.5 rounded" style={{ background: 'rgba(255, 180, 0, 0.2)', color: '#f59e0b' }}>
+            실험적
+          </span>
+        </label>
+        <div className="space-y-2">
+          {POSE_MODE_OPTIONS.map((option) => {
+            const isSelected = (config.poseMode || 'auto') === option.value;
+
+            return (
+              <div
+                key={option.value}
+                onClick={() => onChange({ ...config, poseMode: option.value })}
+                className={`
+                  p-3 rounded-lg border cursor-pointer transition-all
+                  ${isSelected ? 'border-[var(--accent)] bg-[var(--accent-light)]' : 'border-[var(--border)]'}
+                  hover:border-[var(--accent)]
+                `}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`w-4 h-4 rounded-full border-2 flex items-center justify-center
+                      ${isSelected ? 'border-[var(--accent)]' : 'border-[var(--foreground-muted)]'}
+                    `}
+                  >
+                    {isSelected && (
+                      <div className="w-2 h-2 rounded-full" style={{ background: 'var(--accent)' }} />
+                    )}
+                  </div>
+                  <div>
+                    <p className="font-medium text-sm">{option.label}</p>
+                    <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                      {option.description}
+                    </p>
+                  </div>
                 </div>
               </div>
             );

@@ -7,11 +7,17 @@ export type ImageGenerationProvider = 'google-imagen' | 'stability-ai' | 'replic
 export type TryOnProvider = 'idm-vton' | 'kolors-virtual-tryon';
 export type BackgroundProvider = 'google-imagen' | 'stability-ai' | 'replicate-flux' | 'google-gemini';
 
+// ⭐️ Phase 2-1: 포즈 제어 모드 (롤백 안전 설계)
+// 'auto': 기존 Gemini 텍스트 프롬프트 방식 (기본값, 안정적)
+// 'controlnet': ControlNet + OpenPose 스켈레톤 방식 (실험적)
+export type PoseMode = 'auto' | 'controlnet';
+
 // Provider Configuration
 export interface ProviderConfig {
   imageGeneration: ImageGenerationProvider;
   tryOn: TryOnProvider;
   background: BackgroundProvider;
+  poseMode?: PoseMode; // Phase 2-1: 기본값 'auto' (기존 방식 유지)
 }
 
 // Pose Types - 레퍼런스 모델컷 기반 6가지 포즈

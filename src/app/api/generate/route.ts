@@ -18,8 +18,10 @@ import {
   VTONCategory,
   GarmentCategory,
   mapGarmentCategoryToVTON,
+  PoseMode,
 } from '@/types';
 import { logGenerationBatch, type GenerationLogEntry } from '@/lib/notion';
+import { generateWithControlNet, isControlNetAvailable, POSE_SKELETONS } from '@/lib/providers/controlnet';
 
 // Vercel Serverless Function 설정
 // Hobby 플랜: 최대 60초, Pro 플랜: 최대 300초
@@ -65,6 +67,18 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { garmentImage, garmentCategory, styleReferenceImages, backgroundSpotImages, poses, settings, providers, promptSettings } = body as GenerationRequest & { garmentCategory?: GarmentCategory; styleReferenceImages?: string[]; backgroundSpotImages?: string[]; promptSettings?: CustomPromptSettings };
+
+    // ⭐️ Phase 2-1: poseMode 확인 (기본값: 'auto')
+    const poseMode: PoseMode = providers.poseMode || 'auto';
+    const useControlNet = poseMode === 'controlnet' && isControlNetAvailable();
+
+    if (poseMode === 'controlnet') {
+      if (useControlNet) {
+        console.log('🎮 [ControlNet Mode] Using fal.ai ControlNet for pose control');
+      } else {
+        console.warn('⚠️ [ControlNet Mode] Requested but FAL_KEY not available, falling back to auto mode');
+      }
+    }
 
     if (!garmentImage) {
       return NextResponse.json(
@@ -181,20 +195,55 @@ export async function POST(request: NextRequest) {
 
         let modelImage: string;
 
-        // ⭐️ 수정: 항상 AI로 새 모델 생성 (참조 이미지는 스타일 가이드로만 사용)
-        // ⭐️ 일관성: 모든 포즈에 동일한 시드 사용 (같은 모델 유지)
-        console.log(`Generating NEW model for ${task.pose} (category: ${vtonCategory}, seed: ${settings.seed || 'random'})`);
-        modelImage = await imageProvider.generateModelImage({
-          pose: task.pose,
-          style: settings.modelStyle,
-          seed: settings.seed,
-          negativePrompt: negativePrompt || settings.negativePrompt,
-          garmentImage, // 의류 이미지 전달 (뒷면도 색상/스타일 참조 필요)
-          garmentCategory: vtonCategory,
-          styleReferenceImages,
-          backgroundSpotImages,
-          customPrompt: basePrompt,
-        });
+        // ⭐️ Phase 2-1: ControlNet 모드 vs Auto 모드 분기
+        if (useControlNet) {
+          // ControlNet + OpenPose: 스켈레톤 이미지로 포즈 제어
+          console.log(`🎮 [ControlNet] Generating model for ${task.pose} with skeleton: ${POSE_SKELETONS[task.pose]}`);
+
+          const controlNetPrompt = basePrompt
+            ? `${basePrompt}, Korean fashion model, professional fashion photography, iPhone quality`
+            : `Korean fashion model wearing fashion clothes, professional fashion photography, minimalist background, natural lighting, iPhone style photo, full body shot`;
+
+          const controlNetResult = await generateWithControlNet({
+            pose: task.pose,
+            prompt: controlNetPrompt,
+            negativePrompt: negativePrompt || settings.negativePrompt,
+            seed: settings.seed,
+          });
+
+          if (!controlNetResult.success || !controlNetResult.imageUrl) {
+            console.warn(`⚠️ [ControlNet] Failed for ${task.pose}: ${controlNetResult.error}, falling back to auto mode`);
+            // ControlNet 실패 시 기존 방식으로 폴백
+            modelImage = await imageProvider.generateModelImage({
+              pose: task.pose,
+              style: settings.modelStyle,
+              seed: settings.seed,
+              negativePrompt: negativePrompt || settings.negativePrompt,
+              garmentImage,
+              garmentCategory: vtonCategory,
+              styleReferenceImages,
+              backgroundSpotImages,
+              customPrompt: basePrompt,
+            });
+          } else {
+            modelImage = controlNetResult.imageUrl;
+            console.log(`✅ [ControlNet] Success for ${task.pose}`);
+          }
+        } else {
+          // 기존 Auto 모드: 프롬프트 기반 생성
+          console.log(`Generating NEW model for ${task.pose} (category: ${vtonCategory}, seed: ${settings.seed || 'random'})`);
+          modelImage = await imageProvider.generateModelImage({
+            pose: task.pose,
+            style: settings.modelStyle,
+            seed: settings.seed,
+            negativePrompt: negativePrompt || settings.negativePrompt,
+            garmentImage, // 의류 이미지 전달 (뒷면도 색상/스타일 참조 필요)
+            garmentCategory: vtonCategory,
+            styleReferenceImages,
+            backgroundSpotImages,
+            customPrompt: basePrompt,
+          });
+        }
 
         // 2. Virtual Try-On 필수 적용 (의류만 교체)
         // ⭐️ Phase 1-2: 자동 분류된 카테고리 사용
