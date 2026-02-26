@@ -72,14 +72,17 @@ export async function generateWithControlNet(options: ControlNetOptions): Promis
   // 스켈레톤 이미지 URL 결정
   const skeletonPath = POSE_SKELETONS[pose];
 
-  // VERCEL_URL 또는 커스텀 BASE_URL 사용
+  // 프로덕션 도메인 사용 (배포별 URL은 401 에러 발생)
+  // VERCEL_URL은 배포별 URL이라 인증 필요할 수 있음
   let baseUrl: string;
   if (process.env.NEXT_PUBLIC_BASE_URL) {
     baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-  } else if (process.env.VERCEL_URL) {
-    baseUrl = `https://${process.env.VERCEL_URL}`;
+  } else if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    // 프로덕션 URL 우선 사용
+    baseUrl = `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
   } else {
-    baseUrl = 'http://localhost:3000';
+    // 하드코딩된 프로덕션 URL (fallback)
+    baseUrl = 'https://260116iphone.vercel.app';
   }
 
   const finalSkeletonUrl = skeletonUrl || `${baseUrl}${skeletonPath}`;
