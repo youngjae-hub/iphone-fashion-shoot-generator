@@ -75,8 +75,19 @@ export async function POST(request: NextRequest) {
     if (poseMode === 'controlnet') {
       if (useControlNet) {
         console.log('🎮 [ControlNet Mode] Using fal.ai ControlNet for pose control');
+        console.log(`🔑 [ControlNet Mode] FAL_KEY: ${process.env.FAL_KEY ? 'SET ✅' : 'NOT SET ❌'}`);
       } else {
-        console.warn('⚠️ [ControlNet Mode] Requested but FAL_KEY not available, falling back to auto mode');
+        console.error('❌ [ControlNet Mode] FAL_KEY not configured in Vercel environment variables!');
+        console.error('❌ Add FAL_KEY to Vercel Settings → Environment Variables, then Redeploy');
+        // 사용자에게 명확한 에러 반환
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'ControlNet 모드에 필요한 FAL_KEY가 설정되지 않았습니다. Vercel 환경변수에 FAL_KEY를 추가해주세요.',
+            hint: 'Vercel Dashboard → Settings → Environment Variables → FAL_KEY 추가 후 Redeploy'
+          },
+          { status: 400 }
+        );
       }
     }
 
@@ -282,11 +293,30 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 모든 이미지 병렬 생성 (Promise.all 사용)
-    console.log(`Starting parallel generation of ${tasks.length} images...`);
+    // ⭐️ 순차 생성으로 변경 (타임아웃 방지)
+    // Vercel Hobby 60초 제한 대응: 병렬 → 순차 + 조기 반환
+    console.log(`Starting sequential generation of ${tasks.length} images...`);
     const startTime = Date.now();
+    const TIMEOUT_BUFFER_MS = 50000; // 50초 후 조기 반환 (10초 여유)
 
-    const results = await Promise.allSettled(tasks.map(task => generateSingleImage(task)));
+    const results: PromiseSettledResult<GeneratedImage>[] = [];
+
+    for (const task of tasks) {
+      // 타임아웃 체크: 50초 초과 시 남은 작업 중단
+      if (Date.now() - startTime > TIMEOUT_BUFFER_MS) {
+        console.warn(`⏱️ Timeout approaching, stopping after ${results.length}/${tasks.length} images`);
+        break;
+      }
+
+      try {
+        const image = await generateSingleImage(task);
+        results.push({ status: 'fulfilled', value: image });
+        console.log(`✅ Generated ${task.pose} (${results.length}/${tasks.length})`);
+      } catch (error) {
+        results.push({ status: 'rejected', reason: error });
+        console.error(`❌ Failed ${task.pose}:`, error);
+      }
+    }
 
     const generatedImages: GeneratedImage[] = [];
     const errors: string[] = [];
