@@ -201,8 +201,8 @@ export async function POST(request: NextRequest) {
           console.log(`🎮 [ControlNet] Generating model for ${task.pose} with skeleton: ${POSE_SKELETONS[task.pose]}`);
 
           const controlNetPrompt = basePrompt
-            ? `${basePrompt}, Korean fashion model, professional fashion photography, iPhone quality`
-            : `Korean fashion model wearing fashion clothes, professional fashion photography, minimalist background, natural lighting, iPhone style photo, full body shot`;
+            ? `${basePrompt}, young Korean female model in her early 20s, slim fit body, tall with long legs, model-like proportions, professional fashion photography, iPhone quality`
+            : `young Korean female model in her early 20s, slim fit body, tall with long legs, model-like proportions, height 170cm, slender figure, elegant posture, wearing fashion clothes, professional fashion photography, minimalist background, natural lighting, iPhone style photo, full body shot`;
 
           const controlNetResult = await generateWithControlNet({
             pose: task.pose,

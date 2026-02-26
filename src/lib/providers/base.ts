@@ -80,7 +80,9 @@ export class ProviderRegistry {
 export function generateIPhoneStylePrompt(pose: PoseType, additionalPrompt?: string): string {
   const basePrompt = `
     iPhone photography style, natural lighting,
-    young Korean female model,
+    young Korean female model in her early 20s,
+    slim fit body, tall with long legs, model-like proportions,
+    height 170cm, slender figure, elegant posture,
     high-quality fashion lookbook, sharp details,
     natural skin texture, subtle color grading,
     professional fashion photography
@@ -105,6 +107,8 @@ export function generateIPhoneStylePrompt(pose: PoseType, additionalPrompt?: str
 export const DEFAULT_NEGATIVE_PROMPT = `
   low quality, blurry, distorted, deformed, ugly,
   bad anatomy, bad proportions, extra limbs,
+  short legs, chubby, overweight, thick body, wide hips,
+  short height, stocky build, disproportionate body,
   watermark, signature, text, logo,
   oversaturated, artificial lighting
 `.trim().replace(/\s+/g, ' ');
