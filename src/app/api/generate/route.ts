@@ -74,17 +74,14 @@ export async function POST(request: NextRequest) {
 
     if (poseMode === 'controlnet') {
       if (useControlNet) {
-        console.log('🎮 [ControlNet Mode] Using fal.ai ControlNet for pose control');
-        console.log(`🔑 [ControlNet Mode] FAL_KEY: ${process.env.FAL_KEY ? 'SET ✅' : 'NOT SET ❌'}`);
+        console.log('🎮 [ControlNet Mode] Using Replicate ControlNet for pose control');
+        console.log(`🔑 [ControlNet Mode] REPLICATE_API_TOKEN: SET ✅`);
       } else {
-        console.error('❌ [ControlNet Mode] FAL_KEY not configured in Vercel environment variables!');
-        console.error('❌ Add FAL_KEY to Vercel Settings → Environment Variables, then Redeploy');
-        // 사용자에게 명확한 에러 반환
+        console.error('❌ [ControlNet Mode] REPLICATE_API_TOKEN not configured!');
         return NextResponse.json(
           {
             success: false,
-            error: 'ControlNet 모드에 필요한 FAL_KEY가 설정되지 않았습니다. Vercel 환경변수에 FAL_KEY를 추가해주세요.',
-            hint: 'Vercel Dashboard → Settings → Environment Variables → FAL_KEY 추가 후 Redeploy'
+            error: 'ControlNet 모드에 필요한 REPLICATE_API_TOKEN이 설정되지 않았습니다.',
           },
           { status: 400 }
         );

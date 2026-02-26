@@ -1,24 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
+import Replicate from 'replicate';
 
-// ControlNet 디버그 API - 환경변수 및 스켈레톤 URL 테스트
+// ControlNet 디버그 API - Replicate 기반
 export async function GET(request: NextRequest) {
   const results: Record<string, unknown> = {};
 
   // 1. 환경변수 체크
   results.env = {
-    FAL_KEY: process.env.FAL_KEY ? `SET (${process.env.FAL_KEY.substring(0, 10)}...)` : 'NOT SET ❌',
+    REPLICATE_API_TOKEN: process.env.REPLICATE_API_TOKEN
+      ? `SET (${process.env.REPLICATE_API_TOKEN.substring(0, 10)}...)`
+      : 'NOT SET ❌',
     VERCEL_URL: process.env.VERCEL_URL || 'NOT SET',
-    NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL || 'NOT SET',
+    VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL || 'NOT SET',
   };
 
   // 2. Base URL 계산
   let baseUrl: string;
   if (process.env.NEXT_PUBLIC_BASE_URL) {
     baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-  } else if (process.env.VERCEL_URL) {
-    baseUrl = `https://${process.env.VERCEL_URL}`;
+  } else if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    baseUrl = `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
   } else {
-    baseUrl = 'http://localhost:3000';
+    baseUrl = 'https://260116iphone.vercel.app';
   }
   results.baseUrl = baseUrl;
 
@@ -41,41 +44,29 @@ export async function GET(request: NextRequest) {
     };
   }
 
-  // 5. fal.ai API 테스트 (간단한 요청)
-  if (process.env.FAL_KEY) {
+  // 5. Replicate API 연결 테스트 (실제 이미지 생성 없이)
+  if (process.env.REPLICATE_API_TOKEN) {
     try {
-      const falResponse = await fetch('https://fal.run/fal-ai/sdxl-controlnet-union', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Key ${process.env.FAL_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          prompt: 'test image, simple background',
-          openpose_image_url: skeletonUrl,
-          openpose_preprocess: false,
-          controlnet_conditioning_scale: 0.8,
-          num_inference_steps: 10, // 빠른 테스트용
-          guidance_scale: 7.5,
-          num_images: 1,
-          image_size: { width: 512, height: 512 }, // 작은 이미지로 빠른 테스트
-        }),
-      });
+      const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
 
-      const responseText = await falResponse.text();
-      results.falApiTest = {
-        status: falResponse.status,
-        ok: falResponse.ok,
-        response: responseText.substring(0, 500), // 첫 500자만
+      // 모델 정보만 확인 (비용 발생 안함)
+      const model = await replicate.models.get("jagilley", "controlnet-pose");
+      results.replicateTest = {
+        status: 'connected',
+        model: model.name,
+        description: model.description?.substring(0, 100),
       };
     } catch (error) {
-      results.falApiTest = {
+      results.replicateTest = {
+        status: 'error',
         error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
   } else {
-    results.falApiTest = { error: 'FAL_KEY not set, skipping API test' };
+    results.replicateTest = { error: 'REPLICATE_API_TOKEN not set' };
   }
+
+  results.message = 'ControlNet now uses Replicate (same token as VTON)';
 
   return NextResponse.json(results, { status: 200 });
 }
