@@ -110,26 +110,22 @@ export async function generateWithControlNet(options: ControlNetOptions): Promis
     // jagilley/controlnet-pose: OpenPose 기반 포즈 제어
     console.log(`[ControlNet] Calling Replicate API...`);
 
-    const input = {
+    // rossjillian/controlnet - 공개된 안정적인 ControlNet 모델
+    const replicateInput = {
       image: finalSkeletonUrl,
       prompt: `${prompt}, best quality, extremely detailed`,
-      a_prompt: "best quality, extremely detailed, professional fashion photography",
-      n_prompt: negativePrompt || 'blurry, low quality, distorted, deformed, ugly, bad anatomy',
-      num_samples: "1",
-      image_resolution: "512",
-      ddim_steps: 20,
+      structure: "pose", // OpenPose 사용
+      num_outputs: 1,
+      image_resolution: 512,
+      steps: 20,
       scale: 9,
       seed: seed || Math.floor(Math.random() * 1000000),
-      eta: 0,
-      detect_resolution: 512,
-      guess_mode: false,
     };
 
-    console.log(`[ControlNet] Input params:`, JSON.stringify(input, null, 2));
-
+    console.log(`[ControlNet] Input params:`, JSON.stringify(replicateInput, null, 2));
     const output = await replicate.run(
-      "jagilley/controlnet-pose:0304f7f774ba7341ef754231f794b1ba3d129e3c46af3022a1094dbb3bd59ce1" as `${string}/${string}`,
-      { input }
+      "rossjillian/controlnet:795433b19458d0f4fa172a7ccf93178d2adb1cb8ab2ad6c8fdc33fdbcd49f477" as `${string}/${string}`,
+      { input: replicateInput }
     );
 
     console.log(`[ControlNet] Raw output:`, JSON.stringify(output).substring(0, 500));
