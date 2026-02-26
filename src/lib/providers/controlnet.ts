@@ -108,25 +108,31 @@ export async function generateWithControlNet(options: ControlNetOptions): Promis
 
     // Replicate ControlNet OpenPose 모델 사용
     // jagilley/controlnet-pose: OpenPose 기반 포즈 제어
+    console.log(`[ControlNet] Calling Replicate API...`);
+
+    const input = {
+      image: finalSkeletonUrl,
+      prompt: `${prompt}, best quality, extremely detailed`,
+      a_prompt: "best quality, extremely detailed, professional fashion photography",
+      n_prompt: negativePrompt || 'blurry, low quality, distorted, deformed, ugly, bad anatomy',
+      num_samples: "1",
+      image_resolution: "512",
+      ddim_steps: 20,
+      scale: 9,
+      seed: seed || Math.floor(Math.random() * 1000000),
+      eta: 0,
+      detect_resolution: 512,
+      guess_mode: false,
+    };
+
+    console.log(`[ControlNet] Input params:`, JSON.stringify(input, null, 2));
+
     const output = await replicate.run(
       "jagilley/controlnet-pose:0304f7f774ba7341ef754231f794b1ba3d129e3c46af3022a1094dbb3bd59ce1" as `${string}/${string}`,
-      {
-        input: {
-          image: finalSkeletonUrl,
-          prompt: prompt,
-          negative_prompt: negativePrompt || 'blurry, low quality, distorted, deformed, ugly, bad anatomy, short legs, chubby, overweight',
-          num_samples: "1",
-          image_resolution: "768",
-          ddim_steps: 30,
-          scale: 7.5,
-          seed: seed || Math.floor(Math.random() * 1000000),
-          a_prompt: "best quality, extremely detailed, professional fashion photography",
-          n_prompt: negativePrompt || 'blurry, low quality, distorted, deformed',
-          detect_resolution: 768,
-          guess_mode: false,
-        }
-      }
+      { input }
     );
+
+    console.log(`[ControlNet] Raw output:`, JSON.stringify(output).substring(0, 500));
 
     const imageUrl = extractOutputString(output);
     console.log(`[ControlNet] ✅ Success! Image URL: ${imageUrl}`);
@@ -137,10 +143,14 @@ export async function generateWithControlNet(options: ControlNetOptions): Promis
     };
 
   } catch (error) {
-    console.error('[ControlNet] ❌ Error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorStack = error instanceof Error ? error.stack : '';
+    console.error('[ControlNet] ❌ Error:', errorMessage);
+    console.error('[ControlNet] ❌ Stack:', errorStack);
+    console.error('[ControlNet] ❌ Full error:', JSON.stringify(error, null, 2));
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: `ControlNet error: ${errorMessage}`,
     };
   }
 }
