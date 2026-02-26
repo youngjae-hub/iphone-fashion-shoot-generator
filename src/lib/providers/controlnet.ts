@@ -44,25 +44,51 @@ interface ControlNetResult {
 
 // Helper function to extract string from Replicate output
 function extractOutputString(output: unknown): string {
+  console.log('[ControlNet] Output type:', typeof output);
+  console.log('[ControlNet] Output value:', JSON.stringify(output, null, 2)?.substring(0, 300));
+
   if (typeof output === 'string') {
     return output;
   }
+
   if (Array.isArray(output) && output.length > 0) {
     const first = output[0];
+    console.log('[ControlNet] First element type:', typeof first);
+
     if (typeof first === 'string') return first;
+
+    // Replicate FileOutput 객체 처리
     if (first && typeof first === 'object') {
       const obj = first as Record<string, unknown>;
-      if (obj.url) return String(obj.url);
-      if (obj.href) return String(obj.href);
+
+      // toString()이 URL을 반환하는 경우 (FileOutput)
+      if (typeof obj.toString === 'function') {
+        const str = obj.toString();
+        if (str.startsWith('http')) return str;
+      }
+
+      // href() 메서드가 있는 경우
+      if (typeof obj.href === 'function') {
+        return (obj.href as () => string)();
+      }
+
+      // url 속성이 있는 경우
+      if (typeof obj.url === 'string') return obj.url;
+      if (typeof obj.href === 'string') return obj.href;
     }
-    return String(first);
+
+    // 배열 첫 번째 요소를 문자열로 변환
+    const firstStr = String(first);
+    if (firstStr.startsWith('http')) return firstStr;
   }
+
   if (output && typeof output === 'object') {
     const obj = output as Record<string, unknown>;
-    if (obj.url) return String(obj.url);
-    if (obj.href) return String(obj.href);
+    if (typeof obj.url === 'string') return obj.url;
+    if (typeof obj.href === 'string') return obj.href;
   }
-  throw new Error('Unexpected output format from Replicate');
+
+  throw new Error(`Unexpected output format from Replicate: ${typeof output}`);
 }
 
 /**
