@@ -71,14 +71,27 @@ export async function generateWithControlNet(options: ControlNetOptions): Promis
 
   // 스켈레톤 이미지 URL 결정
   const skeletonPath = POSE_SKELETONS[pose];
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : 'http://localhost:3000';
+
+  // VERCEL_URL 또는 커스텀 BASE_URL 사용
+  let baseUrl: string;
+  if (process.env.NEXT_PUBLIC_BASE_URL) {
+    baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+  } else if (process.env.VERCEL_URL) {
+    baseUrl = `https://${process.env.VERCEL_URL}`;
+  } else {
+    baseUrl = 'http://localhost:3000';
+  }
+
   const finalSkeletonUrl = skeletonUrl || `${baseUrl}${skeletonPath}`;
 
-  console.log(`[ControlNet] Generating with pose: ${pose}`);
+  console.log(`[ControlNet] ========== DEBUG ==========`);
+  console.log(`[ControlNet] FAL_KEY: ${falKey ? 'SET ✅' : 'NOT SET ❌'}`);
+  console.log(`[ControlNet] VERCEL_URL: ${process.env.VERCEL_URL || 'NOT SET'}`);
+  console.log(`[ControlNet] Base URL: ${baseUrl}`);
+  console.log(`[ControlNet] Pose: ${pose}`);
   console.log(`[ControlNet] Skeleton URL: ${finalSkeletonUrl}`);
   console.log(`[ControlNet] Prompt: ${prompt.substring(0, 100)}...`);
+  console.log(`[ControlNet] =============================`);
 
   try {
     // fal.ai API 호출
@@ -107,7 +120,10 @@ export async function generateWithControlNet(options: ControlNetOptions): Promis
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[ControlNet] API error:', response.status, errorText);
+      console.error('[ControlNet] ❌ API error:', response.status);
+      console.error('[ControlNet] ❌ Error body:', errorText);
+      console.error('[ControlNet] ❌ Request was sent to:', FAL_CONTROLNET_ENDPOINT);
+      console.error('[ControlNet] ❌ With skeleton URL:', finalSkeletonUrl);
       return {
         success: false,
         error: `fal.ai API error: ${response.status} - ${errorText}`,
@@ -115,6 +131,7 @@ export async function generateWithControlNet(options: ControlNetOptions): Promis
     }
 
     const result: FalApiResponse = await response.json();
+    console.log('[ControlNet] ✅ API response received:', JSON.stringify(result).substring(0, 200));
 
     if (result.images && result.images.length > 0) {
       const imageUrl = result.images[0].url;
