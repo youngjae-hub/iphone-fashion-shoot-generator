@@ -12,61 +12,56 @@ import {
 import {
   GenerationRequest,
   GeneratedImage,
-  CustomPromptSettings,
-  DEFAULT_PROMPT_TEMPLATES,
-  STYLE_MODIFIERS,
   VTONCategory,
   GarmentCategory,
   mapGarmentCategoryToVTON,
   PoseMode,
+  GenerationMode,
 } from '@/types';
 import { logGenerationBatch, type GenerationLogEntry } from '@/lib/notion';
 import { generateWithControlNet, isControlNetAvailable, POSE_SKELETONS } from '@/lib/providers/controlnet';
+import { GoogleGeminiImageProvider } from '@/lib/providers/google-gemini';
+import { ShotType, BackgroundSpotType, ClothingType, TopPoseType, BottomPoseType, OuterPoseType, DressPoseType, selectAutoPoses, AutoGenerateCount } from '@/lib/prompts';
+import { AutoGenerateMode } from '@/types';
 
 // Vercel Serverless Function 설정
 // Hobby 플랜: 최대 60초, Pro 플랜: 최대 300초
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
-// 프롬프트 설정에서 최종 프롬프트 생성
-function buildPromptFromSettings(promptSettings?: CustomPromptSettings): { basePrompt: string; negativePrompt: string } {
-  if (!promptSettings) {
-    return {
-      basePrompt: '',
-      negativePrompt: 'blurry, low quality, distorted, ugly, deformed, bad anatomy, watermark, signature, twisted feet, broken ankles, contorted limbs, unnatural pose, extra fingers, missing limbs, bent backwards, impossible angle, dislocated joints, twisted torso, awkward stance, mannequin pose',
-    };
-  }
-
-  let basePrompt = '';
-
-  if (promptSettings.useCustomPrompt) {
-    basePrompt = promptSettings.basePrompt;
-  } else if (promptSettings.templateId) {
-    const template = DEFAULT_PROMPT_TEMPLATES.find(t => t.id === promptSettings.templateId);
-    basePrompt = template?.basePrompt || '';
-  }
-
-  // 스타일 수식어 추가
-  if (promptSettings.styleModifiers && promptSettings.styleModifiers.length > 0) {
-    const modifierPrompts = promptSettings.styleModifiers
-      .map(id => STYLE_MODIFIERS.find(m => m.id === id)?.prompt)
-      .filter(Boolean)
-      .join(', ');
-    if (modifierPrompts) {
-      basePrompt = basePrompt ? `${basePrompt}, ${modifierPrompts}` : modifierPrompts;
-    }
-  }
-
+// 기본 프롬프트 설정
+function getDefaultPrompts(): { basePrompt: string; negativePrompt: string } {
   return {
-    basePrompt,
-    negativePrompt: promptSettings.negativePrompt || 'blurry, low quality, distorted, ugly, deformed, bad anatomy, watermark, signature',
+    basePrompt: '',
+    negativePrompt: 'blurry, low quality, distorted, ugly, deformed, bad anatomy, watermark, signature, twisted feet, broken ankles, contorted limbs, unnatural pose, extra fingers, missing limbs, bent backwards, impossible angle, dislocated joints, twisted torso, awkward stance, mannequin pose',
   };
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { garmentImage, garmentCategory, styleReferenceImages, backgroundSpotImages, poses, settings, providers, promptSettings } = body as GenerationRequest & { garmentCategory?: GarmentCategory; styleReferenceImages?: string[]; backgroundSpotImages?: string[]; promptSettings?: CustomPromptSettings };
+    const { garmentImage, garmentCategory, backgroundSpotImages, poses, topPoses, settings, providers, backgroundSpotMode, selectedBackgroundSpot, referencePosePrompt, referencePoseImage, autoGenerateMode } = body as GenerationRequest & {
+      garmentCategory?: GarmentCategory;
+      backgroundSpotImages?: string[];
+      backgroundSpotMode?: 'studio' | 'dropbox';
+      selectedBackgroundSpot?: { path: string; thumbnailUrl?: string } | null;
+      topPoses?: TopPoseType[];  // ⭐️ 상의 포즈 배열 (Direct 모드용)
+      referencePosePrompt?: string | null;  // ⭐️ 레퍼런스 이미지에서 추출한 포즈 프롬프트 (텍스트)
+      referencePoseImage?: string | null;  // ⭐️ 레퍼런스 포즈 원본 이미지 (base64)
+      autoGenerateMode?: AutoGenerateMode;  // ⭐️ Phase 2-4: 자동 생성 모드
+    };
+
+    // 레퍼런스 포즈 로깅
+    if (referencePoseImage) {
+      console.log(`📸 [Reference Pose] Using reference IMAGE for visual pose matching`);
+    }
+    if (referencePosePrompt) {
+      console.log(`📸 [Reference Pose] Extracted prompt: "${referencePosePrompt}"`);
+    }
+
+    // ⭐️ 생성 모드 확인 (기본값: 'direct' - VTON 없이 직접 생성)
+    const generationMode: GenerationMode = providers.generationMode || 'direct';
+    console.log(`🎯 [Generation Mode] ${generationMode === 'direct' ? 'Direct (레퍼런스 방식)' : 'VTON (기존 방식)'}`);
 
     // ⭐️ Phase 2-1: poseMode 확인 (기본값: 'auto')
     const poseMode: PoseMode = providers.poseMode || 'auto';
@@ -170,8 +165,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 프롬프트 설정에서 최종 프롬프트 빌드
-    const { basePrompt, negativePrompt } = buildPromptFromSettings(promptSettings);
+    // 기본 프롬프트 설정
+    const { basePrompt, negativePrompt } = getDefaultPrompts();
 
     // ⭐️ 일관성을 위한 시드 설정 (모든 포즈에 동일 적용)
     // 시드가 없으면 랜덤 생성하여 배치 내 일관성 유지
@@ -184,117 +179,341 @@ export async function POST(request: NextRequest) {
     interface GenerationTask {
       pose: typeof poses[0];
       shotIndex: number;
+      topPose?: TopPoseType;  // ⭐️ 상의(이너) 포즈
+      bottomPose?: BottomPoseType;  // ⭐️ 하의 포즈
+      outerPose?: OuterPoseType;  // ⭐️ 아우터 포즈
+      dressPose?: DressPoseType;  // ⭐️ 드레스/원피스 포즈
+      seedOffset?: number;  // ⭐️ 변형용 시드 오프셋
     }
 
     const tasks: GenerationTask[] = [];
-    for (const pose of poses) {
-      for (let i = 0; i < settings.shotsPerPose; i++) {
-        tasks.push({ pose, shotIndex: i });
+
+    // ⭐️ 레퍼런스 포즈 이미지가 있으면 1개만 생성
+    if (referencePoseImage) {
+      console.log(`📸 [Reference Pose Mode] Generating 1 image with reference pose`);
+      tasks.push({ pose: poses[0] || 'front', shotIndex: 0 });
+    }
+    // ⭐️ Phase 2-4: 자동 생성 모드 (5컷 또는 10컷)
+    else if (autoGenerateMode === 5 || autoGenerateMode === 10) {
+      const autoCount = autoGenerateMode as AutoGenerateCount;
+      // garmentCategory를 전달하여 아우터/드레스 구분
+      const autoPoses = selectAutoPoses(vtonCategory, autoCount, garmentCategory);
+      console.log(`🎯 [Auto Generate Mode] ${autoCount}컷 자동 생성, Category: ${vtonCategory}, Garment: ${garmentCategory || 'auto'}`);
+
+      for (const variation of autoPoses.variations) {
+        if (autoPoses.outerPoses) {
+          // 아우터 포즈
+          tasks.push({
+            pose: 'front',
+            shotIndex: 0,
+            outerPose: variation.poseType as OuterPoseType,
+            seedOffset: variation.seedOffset,
+          });
+        } else if (autoPoses.dressPoses) {
+          // 드레스 포즈
+          tasks.push({
+            pose: 'front',
+            shotIndex: 0,
+            dressPose: variation.poseType as DressPoseType,
+            seedOffset: variation.seedOffset,
+          });
+        } else if (autoPoses.bottomPoses) {
+          // 하의 포즈
+          tasks.push({
+            pose: 'front',
+            shotIndex: 0,
+            bottomPose: variation.poseType as BottomPoseType,
+            seedOffset: variation.seedOffset,
+          });
+        } else if (autoPoses.topPoses) {
+          // 상의 포즈
+          tasks.push({
+            pose: 'front',
+            shotIndex: 0,
+            topPose: variation.poseType as TopPoseType,
+            seedOffset: variation.seedOffset,
+          });
+        }
+      }
+      console.log(`📍 [Auto Generate] Created ${tasks.length} tasks`);
+    }
+    // ⭐️ Direct 모드 + 상의 + topPoses 배열이 있으면 topPoses 사용
+    else if (generationMode === 'direct' && vtonCategory === 'upper_body' && topPoses && topPoses.length > 0) {
+      console.log(`📍 [Direct Mode] Using topPoses: ${topPoses.join(', ')}`);
+      for (const topPose of topPoses) {
+        tasks.push({ pose: 'front', shotIndex: 0, topPose });
+      }
+    } else {
+      // 기존 방식: poses 배열 사용 (수동 선택 모드)
+      for (const pose of poses) {
+        for (let i = 0; i < settings.shotsPerPose; i++) {
+          tasks.push({ pose, shotIndex: i });
+        }
       }
     }
 
     // 병렬 이미지 생성 함수
     async function generateSingleImage(task: GenerationTask): Promise<GeneratedImage> {
       try {
-        // Virtual Try-On 필수 체크
-        if (!tryOnAvailable) {
-          throw new Error('Virtual Try-On이 필수입니다. REPLICATE_API_TOKEN을 확인하세요.');
-        }
+        let resultImage: string;
 
-        let modelImage: string;
+        // ⭐️ Direct 모드: VTON 없이 AI가 직접 생성 (레퍼런스 프로그램 방식)
+        if (generationMode === 'direct') {
+          // Gemini의 generateIPhoneStyle 사용 (새로운 프롬프트 시스템)
+          const geminiProvider = new GoogleGeminiImageProvider();
 
-        // ⭐️ Phase 2-1: ControlNet 모드 vs Auto 모드 분기
-        if (useControlNet) {
-          // ControlNet + OpenPose: 스켈레톤 이미지로 포즈 제어
-          console.log(`🎮 [ControlNet] Generating model for ${task.pose} with skeleton: ${POSE_SKELETONS[task.pose]}`);
+          // 의류 카테고리를 ClothingType으로 매핑
+          const clothingTypeMap: Record<string, ClothingType> = {
+            'upper_body': 'top',
+            'lower_body': 'bottom',
+            'dresses': 'dress',
+          };
+          const clothingType = clothingTypeMap[vtonCategory] || 'dress';
 
-          const controlNetPrompt = basePrompt
-            ? `${basePrompt}, young Korean female model in her early 20s, slim fit body, tall with long legs, model-like proportions, professional fashion photography, iPhone quality`
-            : `young Korean female model in her early 20s, slim fit body, tall with long legs, model-like proportions, height 170cm, slender figure, elegant posture, wearing fashion clothes, professional fashion photography, minimalist background, natural lighting, iPhone style photo, full body shot`;
+          // ⭐️ 포즈 타입 결정: task에서 직접 또는 카테고리별 매핑
+          let topPose: TopPoseType | undefined;
+          let bottomPose: BottomPoseType | undefined;
+          let outerPose: OuterPoseType | undefined;
+          let dressPose: DressPoseType | undefined;
 
-          const controlNetResult = await generateWithControlNet({
-            pose: task.pose,
-            prompt: controlNetPrompt,
-            negativePrompt: negativePrompt || settings.negativePrompt,
-            seed: settings.seed,
+          // 레퍼런스 이미지가 있으면 프리셋 포즈 무시
+          if (!referencePoseImage) {
+            // ⭐️ task에서 직접 지정된 포즈 우선 사용 (자동 생성 모드)
+            if (task.topPose) {
+              topPose = task.topPose;
+              console.log(`👕 [Auto/Direct] Using topPose: ${topPose}`);
+            } else if (task.bottomPose) {
+              bottomPose = task.bottomPose;
+              console.log(`👖 [Auto] Using bottomPose: ${bottomPose}`);
+            } else if (task.outerPose) {
+              outerPose = task.outerPose;
+              console.log(`🧥 [Auto] Using outerPose: ${outerPose}`);
+            } else if (task.dressPose) {
+              dressPose = task.dressPose;
+              console.log(`👗 [Auto] Using dressPose: ${dressPose}`);
+            }
+            // ⭐️ 수동 선택 모드: garmentCategory 기반 매핑
+            else if (garmentCategory === 'outer') {
+              // 아우터: OuterPoseType 매핑
+              const outerPoseMap: Record<string, OuterPoseType> = {
+                'front': 'outer_front_open',
+                'styled': 'outer_front_closed',
+                'side': 'outer_side',
+                'sitting': 'outer_front_closed',
+                'fullbody': 'outer_front_open',
+                'leaning': 'outer_front_closed',
+                'back': 'outer_back',
+                'walking': 'outer_walking',
+                'bag': 'outer_front_open',
+                'crop': 'outer_detail',
+              };
+              outerPose = outerPoseMap[task.pose];
+              console.log(`🧥 [Manual] ${task.pose} → ${outerPose}`);
+            } else if (garmentCategory === 'dress' || vtonCategory === 'dresses') {
+              // 드레스/원피스: DressPoseType 매핑
+              const dressPoseMap: Record<string, DressPoseType> = {
+                'front': 'dress_front',
+                'styled': 'dress_twirl',
+                'side': 'dress_side',
+                'sitting': 'dress_sitting',
+                'fullbody': 'dress_front',
+                'leaning': 'dress_leaning',  // ⭐️ 기대기 포즈 수정
+                'back': 'dress_back',
+                'walking': 'dress_twirl',
+                'bag': 'dress_front',
+                'crop': 'dress_detail',
+              };
+              dressPose = dressPoseMap[task.pose];
+              console.log(`👗 [Manual] ${task.pose} → ${dressPose}`);
+            } else if (vtonCategory === 'upper_body') {
+              // 상의(이너): TopPoseType 매핑
+              const topPoseMap: Record<string, TopPoseType> = {
+                'front': 'top_front',
+                'styled': 'top_hair_touch',
+                'side': 'top_side_glance',
+                'sitting': 'top_sitting',
+                'fullbody': 'top_front',
+                'leaning': 'top_leaning',
+                'back': 'top_front',
+                'walking': 'top_front',
+                'bag': 'top_hair_touch',
+                'crop': 'top_detail',
+              };
+              topPose = topPoseMap[task.pose];
+              console.log(`👕 [Manual] ${task.pose} → ${topPose}`);
+            } else if (vtonCategory === 'lower_body') {
+              // 하의: BottomPoseType 매핑
+              const bottomPoseMap: Record<string, BottomPoseType> = {
+                'front': 'bottom_front',
+                'side': 'bottom_side',
+                'styled': 'bottom_walking',
+                'sitting': 'bottom_sitting',
+                'fullbody': 'bottom_front',
+                'leaning': 'bottom_leaning',  // ⭐️ 기대기 포즈 추가
+                'back': 'bottom_back',
+                'walking': 'bottom_walking',
+                'bag': 'bottom_front',
+                'crop': 'bottom_front',
+              };
+              bottomPose = bottomPoseMap[task.pose];
+              console.log(`👖 [Manual] ${task.pose} → ${bottomPose}`);
+            }
+          }
+
+          const currentPose = task.topPose || task.bottomPose || task.outerPose || task.dressPose || task.pose;
+          console.log(`🎯 [Direct Mode] Generating for ${currentPose}, Category: ${vtonCategory}, Garment: ${garmentCategory || 'auto'}, RefImage: ${referencePoseImage ? 'YES' : 'NO'}`);
+
+          // 배경 스팟 이미지 (있으면 첫 번째 사용)
+          const backgroundSpotImage = backgroundSpotImages && backgroundSpotImages.length > 0
+            ? backgroundSpotImages[0]
+            : undefined;
+
+          // ⭐️ 레퍼런스 포즈 텍스트가 있으면 additionalInstructions에 포함
+          const poseInstructions = referencePosePrompt
+            ? `CRITICAL POSE REQUIREMENT: ${referencePosePrompt}. ${basePrompt || ''}`
+            : basePrompt;
+
+          const result = await geminiProvider.generateIPhoneStyle({
+            garmentImage,
+            shotType: 'iphone_crop' as ShotType,
+            backgroundSpot: backgroundSpotImage ? 'custom' as BackgroundSpotType : 'studio' as BackgroundSpotType,
+            backgroundSpotImage,
+            clothingType: clothingType as ClothingType,
+            topPose,
+            bottomPose,
+            outerPose,  // ⭐️ 아우터 포즈 전달
+            dressPose,  // ⭐️ 드레스 포즈 전달
+            referencePoseImage: referencePoseImage || undefined,
+            additionalInstructions: poseInstructions,
           });
 
-          if (!controlNetResult.success || !controlNetResult.imageUrl) {
-            console.warn(`⚠️ [ControlNet] Failed for ${task.pose}: ${controlNetResult.error}, falling back to auto mode`);
-            // ControlNet 실패 시 기존 방식으로 폴백
+          resultImage = result.image;
+          console.log(`✅ [Direct Mode] Generated for ${task.pose}`);
+
+        } else {
+          // ⭐️ VTON 모드: 기존 방식 (모델 생성 → VTON 적용)
+
+          // Virtual Try-On 필수 체크
+          if (!tryOnAvailable) {
+            throw new Error('Virtual Try-On이 필수입니다. REPLICATE_API_TOKEN을 확인하세요.');
+          }
+
+          let modelImage: string;
+
+          // ⭐️ Phase 2-1: ControlNet 모드 vs Auto 모드 분기
+          if (useControlNet) {
+            // ControlNet + OpenPose: 스켈레톤 이미지로 포즈 제어
+            console.log(`🎮 [ControlNet] Generating model for ${task.pose} with skeleton: ${POSE_SKELETONS[task.pose]}, category: ${vtonCategory}`);
+
+            // 의류 카테고리에 따른 프레이밍 조정
+            const framingPrompt = vtonCategory === 'upper_body'
+              ? 'upper body focus, chest to waist framing, showing the top clearly'
+              : vtonCategory === 'lower_body'
+              ? 'full body shot, showing pants/skirt clearly'
+              : 'full body shot, showing the entire outfit';
+
+            // ⭐️ 레퍼런스 포즈가 있으면 프롬프트에 포함
+            const poseDescription = referencePosePrompt || '';
+            const controlNetPrompt = basePrompt
+              ? `${poseDescription ? poseDescription + ', ' : ''}${basePrompt}, young Korean female model in her early 20s, slim fit body, tall with long legs, model-like proportions, professional fashion photography, iPhone quality, ${framingPrompt}`
+              : `${poseDescription ? poseDescription + ', ' : ''}young Korean female model in her early 20s, slim fit body, tall with long legs, model-like proportions, height 170cm, slender figure, elegant posture, wearing fashion clothes, professional fashion photography, minimalist background, natural lighting, iPhone style photo, ${framingPrompt}`;
+
+            const controlNetResult = await generateWithControlNet({
+              pose: task.pose,
+              prompt: controlNetPrompt,
+              negativePrompt: negativePrompt || settings.negativePrompt,
+              seed: settings.seed,
+              garmentCategory: vtonCategory,
+            });
+
+            if (!controlNetResult.success || !controlNetResult.imageUrl) {
+              console.warn(`⚠️ [ControlNet] Failed for ${task.pose}: ${controlNetResult.error}, falling back to auto mode`);
+              // ControlNet 실패 시 기존 방식으로 폴백
+              // ⭐️ 레퍼런스 포즈가 있으면 포함
+              const fallbackPrompt = referencePosePrompt
+                ? `${referencePosePrompt}, ${basePrompt || ''}`
+                : basePrompt;
+              modelImage = await imageProvider.generateModelImage({
+                pose: task.pose,
+                style: settings.modelStyle,
+                seed: settings.seed,
+                negativePrompt: negativePrompt || settings.negativePrompt,
+                garmentImage,
+                garmentCategory: vtonCategory,
+                backgroundSpotImages,
+                customPrompt: fallbackPrompt,
+              });
+            } else {
+              modelImage = controlNetResult.imageUrl;
+              console.log(`✅ [ControlNet] Success for ${task.pose}`);
+            }
+          } else {
+            // 기존 Auto 모드: 프롬프트 기반 생성
+            // ⭐️ 레퍼런스 포즈가 있으면 customPrompt에 포함
+            const customPromptWithPose = referencePosePrompt
+              ? `${referencePosePrompt}, ${basePrompt || ''}`
+              : basePrompt;
+
+            console.log(`Generating NEW model for ${task.pose} (category: ${vtonCategory}, seed: ${settings.seed || 'random'})`);
             modelImage = await imageProvider.generateModelImage({
               pose: task.pose,
               style: settings.modelStyle,
               seed: settings.seed,
               negativePrompt: negativePrompt || settings.negativePrompt,
-              garmentImage,
+              garmentImage, // 의류 이미지 전달 (뒷면도 색상/스타일 참조 필요)
               garmentCategory: vtonCategory,
-              styleReferenceImages,
               backgroundSpotImages,
-              customPrompt: basePrompt,
+              customPrompt: customPromptWithPose,
             });
-          } else {
-            modelImage = controlNetResult.imageUrl;
-            console.log(`✅ [ControlNet] Success for ${task.pose}`);
           }
-        } else {
-          // 기존 Auto 모드: 프롬프트 기반 생성
-          console.log(`Generating NEW model for ${task.pose} (category: ${vtonCategory}, seed: ${settings.seed || 'random'})`);
-          modelImage = await imageProvider.generateModelImage({
+
+          // 2. Virtual Try-On 필수 적용 (의류만 교체)
+          // ⭐️ Phase 1-2: 자동 분류된 카테고리 사용
+          // 주의: VTON은 전신(얼굴 포함)이 필요하므로 크롭 전에 실행
+          resultImage = await tryOnProvider.tryOn({
+            garmentImage,
+            modelImage,
             pose: task.pose,
-            style: settings.modelStyle,
-            seed: settings.seed,
-            negativePrompt: negativePrompt || settings.negativePrompt,
-            garmentImage, // 의류 이미지 전달 (뒷면도 색상/스타일 참조 필요)
-            garmentCategory: vtonCategory,
-            styleReferenceImages,
-            backgroundSpotImages,
-            customPrompt: basePrompt,
+            category: vtonCategory, // 자동 분류 또는 사용자 지정 카테고리
+            seed: settings.seed ? settings.seed + task.shotIndex : undefined, // 각 컷마다 다른 시드
           });
         }
 
-        // 2. Virtual Try-On 필수 적용 (의류만 교체)
-        // ⭐️ Phase 1-2: 자동 분류된 카테고리 사용
-        // 주의: VTON은 전신(얼굴 포함)이 필요하므로 크롭 전에 실행
-        let resultImage = await tryOnProvider.tryOn({
-          garmentImage,
-          modelImage,
-          pose: task.pose,
-          category: vtonCategory, // 자동 분류 또는 사용자 지정 카테고리
-          seed: settings.seed ? settings.seed + task.shotIndex : undefined, // 각 컷마다 다른 시드
-        });
-
         // ⭐️ Phase 1-1: 얼굴 크롭 (이미지 비율 기반 스마트 크롭)
+        // ⭐️ Phase 2-4: bottomPose도 레이블에 포함
+        const poseLabel = task.topPose || task.bottomPose || task.outerPose || task.dressPose || task.pose;
         try {
-          console.log(`Applying smart face crop for ${task.pose}...`);
+          console.log(`Applying smart face crop for ${poseLabel}...`);
           resultImage = await cropWithFaceDetection(resultImage, task.pose);
-          console.log(`✅ Face cropped successfully for ${task.pose}`);
+          console.log(`✅ Face cropped successfully for ${poseLabel}`);
         } catch (cropError) {
-          console.warn(`⚠️ Face crop failed for ${task.pose}:`, cropError);
-          // 크롭 실패 시 VTON 결과 그대로 사용
+          console.warn(`⚠️ Face crop failed for ${poseLabel}:`, cropError);
+          // 크롭 실패 시 결과 그대로 사용
         }
 
         return {
           id: uuidv4(),
           url: resultImage,
-          pose: task.pose,
+          pose: poseLabel,  // ⭐️ topPose 또는 bottomPose 사용
           timestamp: Date.now(),
           settings,
-          provider: styleReferenceImages && styleReferenceImages.length > 0
-            ? `${providers.tryOn} (Reference-based)`
+          provider: generationMode === 'direct'
+            ? `${providers.imageGeneration} (Direct)`
             : `${providers.imageGeneration} + ${providers.tryOn}`,
         };
       } catch (error) {
-        console.error(`Error generating image for pose ${task.pose}, shot ${task.shotIndex}:`, error);
-        throw error; // Try-On 실패는 전체 요청 실패로 처리
+        console.error(`Error generating image for pose ${task.topPose || task.bottomPose || task.outerPose || task.dressPose || task.pose}, shot ${task.shotIndex}:`, error);
+        throw error;
       }
     }
 
     // ⭐️ 순차 생성으로 변경 (타임아웃 방지)
-    // Vercel Hobby 60초 제한 대응: 병렬 → 순차 + 조기 반환
+    // 로컬: 3분, Vercel Hobby: 60초 제한
     console.log(`Starting sequential generation of ${tasks.length} images...`);
     const startTime = Date.now();
-    const TIMEOUT_BUFFER_MS = 50000; // 50초 후 조기 반환 (10초 여유)
+    const isLocal = process.env.NODE_ENV === 'development' || !process.env.VERCEL;
+    const TIMEOUT_BUFFER_MS = isLocal ? 180000 : 50000; // 로컬 3분, Vercel 50초
+    console.log(`⏱️ Timeout set to ${TIMEOUT_BUFFER_MS / 1000}s (${isLocal ? 'local' : 'vercel'})`)
 
     const results: PromiseSettledResult<GeneratedImage>[] = [];
 
@@ -333,7 +552,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Virtual Try-On에 실패했습니다.',
+          error: generationMode === 'direct' ? '이미지 생성에 실패했습니다.' : 'Virtual Try-On에 실패했습니다.',
           details: errors.join(', ')
         },
         { status: 500 }
@@ -352,13 +571,11 @@ export async function POST(request: NextRequest) {
         modelName: tryOnAvailable ? `${providers.imageGeneration} + ${providers.tryOn}` : providers.imageGeneration,
         pose: img.pose,
         prompt: basePrompt || undefined,
-        customPrompt: promptSettings?.useCustomPrompt ? promptSettings.basePrompt : undefined,
-        hasStyleReference: !!(styleReferenceImages && styleReferenceImages.length > 0),
+        hasStyleReference: false,
         hasBackgroundSpot: !!(backgroundSpotImages && backgroundSpotImages.length > 0),
         success: true,
         resultImageUrl: img.url.startsWith('http') ? img.url : undefined,
-        styleReferenceInfo: styleReferenceImages?.length ? `${styleReferenceImages.length}장 사용` : undefined,
-        backgroundSpotInfo: backgroundSpotImages?.length ? `${backgroundSpotImages.length}장 사용` : undefined,
+        backgroundSpotInfo: backgroundSpotMode === 'dropbox' ? selectedBackgroundSpot?.path : undefined,
         totalShotsGenerated: generatedImages.length, // 총 생성 컷 수
         durationSeconds: durationSeconds, // 소요 시간 (초)
       }));
@@ -404,7 +621,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { garmentImage, styleReferenceImages, pose, settings, providers } = body;
+    const { garmentImage, pose, settings, providers } = body;
 
     const imageProvider = getImageGenerationProvider(providers.imageGeneration);
     const tryOnProvider = getTryOnProvider(providers.tryOn);
@@ -437,7 +654,6 @@ export async function PUT(request: NextRequest) {
       seed: settings.seed,
       negativePrompt: settings.negativePrompt,
       garmentImage,
-      styleReferenceImages,
     });
 
     const resultImage = await tryOnProvider.tryOn({

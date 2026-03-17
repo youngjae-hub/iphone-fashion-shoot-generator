@@ -7,10 +7,53 @@ export type ImageGenerationProvider = 'google-imagen' | 'stability-ai' | 'replic
 export type TryOnProvider = 'idm-vton' | 'kolors-virtual-tryon';
 export type BackgroundProvider = 'google-imagen' | 'stability-ai' | 'replicate-flux' | 'google-gemini';
 
+// ============================================
+// iPhone Style Lookbook Types (v2 재설계)
+// CTR 방식 참고: 촬영 타입, 배경 스팟 분리
+// ============================================
+
+// 촬영 타입 - CTR의 '모델컷_face', '모델컷_noface' 등에 대응
+export type ShotType = 'iphone_crop' | 'iphone_partial_face' | 'iphone_fullbody';
+
+// 배경 스팟 타입 - CTR의 '호리존', '자연광' 등에 대응하되 더 세분화
+export type BackgroundSpotType = 'home' | 'cafe' | 'outdoor' | 'street' | 'custom';
+
+// 의류 타입 - CTR의 CLOTHING_TYPE_HINTS 참고
+export type ClothingTypeHint = 'top' | 'outer' | 'bottom' | 'dress' | 'set';
+
+// iPhone 스타일 생성 요청
+export interface IPhoneStyleRequest {
+  garmentImage: string; // base64 제품 누끼
+  shotType: ShotType;
+  backgroundSpot: BackgroundSpotType;
+  backgroundSpotImage?: string; // custom 배경 스팟 이미지 (base64)
+  clothingType?: ClothingTypeHint;
+  additionalInstructions?: string;
+}
+
+// iPhone 스타일 생성 응답
+export interface IPhoneStyleResponse {
+  success: boolean;
+  image?: string; // base64 결과 이미지
+  prompt?: string; // 사용된 프롬프트 (디버그용)
+  error?: string;
+}
+
 // ⭐️ Phase 2-1: 포즈 제어 모드 (롤백 안전 설계)
 // 'auto': 기존 Gemini 텍스트 프롬프트 방식 (기본값, 안정적)
 // 'controlnet': ControlNet + OpenPose 스켈레톤 방식 (실험적)
 export type PoseMode = 'auto' | 'controlnet';
+
+// ⭐️ 생성 모드 (레퍼런스 프로그램 참고)
+// 'direct': VTON 없이 AI가 직접 모델+의류 생성 (레퍼런스 방식, 기본값)
+// 'vton': 모델 생성 후 Virtual Try-On 적용 (기존 방식)
+export type GenerationMode = 'direct' | 'vton';
+
+// ⭐️ Phase 2-4: 자동 생성 모드
+// 'manual': 수동 포즈 선택 (기존 방식)
+// 5: 자동 5컷 생성
+// 10: 자동 10컷 생성
+export type AutoGenerateMode = 'manual' | 5 | 10;
 
 // Provider Configuration
 export interface ProviderConfig {
@@ -18,10 +61,11 @@ export interface ProviderConfig {
   tryOn: TryOnProvider;
   background: BackgroundProvider;
   poseMode?: PoseMode; // Phase 2-1: 기본값 'auto' (기존 방식 유지)
+  generationMode?: GenerationMode; // 기본값 'direct' (VTON 없이 직접 생성)
 }
 
-// Pose Types - 레퍼런스 모델컷 기반 6가지 포즈
-export type PoseType = 'front' | 'back' | 'side' | 'sitting' | 'styled' | 'fullbody';
+// Pose Types - 레퍼런스 모델컷 기반 10가지 포즈
+export type PoseType = 'front' | 'side' | 'styled' | 'sitting' | 'fullbody' | 'leaning' | 'back' | 'walking' | 'bag' | 'crop';
 
 export interface PoseConfig {
   type: PoseType;
@@ -29,18 +73,130 @@ export interface PoseConfig {
   labelKr: string;
   promptEn: string;
   enabled: boolean;
+  description?: string; // UI에 표시할 짧은 설명
 }
 
-// 기본 포즈 설정 (뒷면은 VTON에서 디테일 손실이 심해 비활성화)
+// 기본 포즈 설정 (레퍼런스 이미지 분석 기반)
 export const DEFAULT_POSES: PoseConfig[] = [
-  { type: 'front', label: 'Front', labelKr: '정면', promptEn: 'front view, standing straight, arms relaxed at sides', enabled: true },
-  { type: 'styled', label: 'Styled', labelKr: '연출', promptEn: 'hand touching hair or near face, natural dynamic pose, lifestyle editorial feel', enabled: true },
-  { type: 'side', label: 'Side', labelKr: '측면', promptEn: '3/4 angle view, slightly turned body, elegant silhouette', enabled: true },
-  { type: 'sitting', label: 'Sitting', labelKr: '앉은', promptEn: 'sitting on sofa or chair, relaxed pose, legs crossed or together', enabled: true },
-  { type: 'fullbody', label: 'Full Body', labelKr: '전신', promptEn: 'full body shot showing feet, standing pose, head to toe visible', enabled: true },
-  // 뒷면은 VTON에서 의류 디테일이 심하게 왜곡되어 제외
-  // { type: 'back', label: 'Back', labelKr: '뒷면', promptEn: 'back view, showing back of garment, slight head turn', enabled: false },
+  // 기본 5개 (기본 선택됨)
+  { type: 'front', label: 'Front', labelKr: '정면', promptEn: 'front view, standing straight, arms relaxed at sides, looking at camera', enabled: true, description: '정면 기본 스탠딩' },
+  { type: 'side', label: 'Side', labelKr: '측면', promptEn: '3/4 angle view, slightly turned body, elegant silhouette, looking away', enabled: true, description: '3/4 각도 실루엣' },
+  { type: 'styled', label: 'Styled', labelKr: '연출', promptEn: 'hand touching hair or near face, natural dynamic pose, lifestyle editorial feel', enabled: true, description: '머리 터치 자연스러운 무드' },
+  { type: 'sitting', label: 'Sitting', labelKr: '앉은', promptEn: 'sitting on sofa or chair, relaxed pose, legs crossed or together, hands on lap', enabled: true, description: '소파/의자 릴렉스' },
+  { type: 'fullbody', label: 'Full Body', labelKr: '전신', promptEn: 'full body shot showing feet, standing pose, head to toe visible', enabled: true, description: '머리~발끝 풀샷' },
+  // 추가 5개 (선택 가능)
+  { type: 'leaning', label: 'Leaning', labelKr: '기대기', promptEn: 'leaning against window sill or wall, one leg bent, relaxed casual stance, natural lighting from window', enabled: true, description: '창가/벽에 기대기' },
+  { type: 'back', label: 'Back', labelKr: '뒷모습', promptEn: 'back view, hand touching hair or neck, slight head turn showing profile, looking away', enabled: true, description: '뒤돌아 프로필' },
+  { type: 'walking', label: 'Walking', labelKr: '워킹', promptEn: 'walking pose, one foot forward, natural stride, dynamic movement, outdoor street style', enabled: true, description: '걷는 듯한 동적 포즈' },
+  { type: 'bag', label: 'Bag', labelKr: '가방', promptEn: 'holding shoulder bag or handbag, standing pose, one hand on bag strap, stylish accessory coordination', enabled: true, description: '가방 메고 스타일링' },
+  { type: 'crop', label: 'Crop', labelKr: '크롭', promptEn: 'upper body focus from chest to waist, headless crop shot, hands visible at sides or touching clothes, detail focus', enabled: true, description: '상반신 디테일 컷' },
 ];
+
+// ============================================
+// 상의(이너) 전용 5가지 표준 포즈 - 레퍼런스 기반
+// ============================================
+
+export type TopPoseType = 'top_front' | 'top_hair_touch' | 'top_side_glance' | 'top_leaning' | 'top_detail' | 'top_sitting';
+
+// ⭐️ Phase 2-4: 하의(바지/스커트) 전용 포즈 타입
+export type BottomPoseType = 'bottom_front' | 'bottom_side' | 'bottom_walking' | 'bottom_sitting' | 'bottom_back' | 'bottom_leaning';
+
+// ⭐️ 아우터(코트/자켓) 전용 포즈 타입
+export type OuterPoseType = 'outer_front_open' | 'outer_front_closed' | 'outer_side' | 'outer_back' | 'outer_walking' | 'outer_detail';
+
+// ⭐️ 드레스/원피스 전용 포즈 타입
+export type DressPoseType = 'dress_front' | 'dress_side' | 'dress_back' | 'dress_twirl' | 'dress_sitting' | 'dress_detail' | 'dress_leaning';
+
+export interface TopPoseConfig {
+  type: TopPoseType;
+  label: string;
+  labelKr: string;
+  promptEn: string;
+  framing: string; // 프레이밍 설명
+  handPosition: string; // 손 위치 가이드
+}
+
+/**
+ * 상의(이너) 전용 5가지 표준 포즈
+ * 레퍼런스: Dropbox 폴더2 (검은색 V넥 긴팔) 이미지 분석 기반
+ *
+ * 핵심 원칙:
+ * - 상의가 주인공 → 상반신~무릎 미디엄 샷 위주
+ * - 자연스러운 손 제스처로 소매/넥라인 강조
+ * - 창가 자연광 활용한 캐주얼 무드
+ */
+export const TOP_POSES: TopPoseConfig[] = [
+  {
+    type: 'top_front',
+    label: 'Front Relaxed',
+    labelKr: '정면 릴렉스',
+    promptEn: 'front view, standing relaxed, arms naturally at sides, slight weight shift to one leg, calm expression looking at camera',
+    framing: 'medium shot from chest to knees, focus on top garment',
+    handPosition: 'both arms relaxed at sides, fingers loosely open',
+  },
+  {
+    type: 'top_hair_touch',
+    label: 'Hair Touch',
+    labelKr: '헤어 터치',
+    promptEn: 'one hand gently touching hair near ear or neck, other arm relaxed, slight head tilt, soft natural expression, candid lifestyle feel',
+    framing: 'medium shot from chest to thighs, sleeve detail visible',
+    handPosition: 'one hand raised to hair/neck level, bent elbow showing sleeve',
+  },
+  {
+    type: 'top_side_glance',
+    label: 'Side Glance',
+    labelKr: '사이드 시선',
+    promptEn: '3/4 angle body position, face turned to side looking away from camera, one hand near chin or jaw, thoughtful elegant pose',
+    framing: 'medium shot showing torso silhouette, neckline emphasized',
+    handPosition: 'one hand delicately near chin/jaw, other at side or on hip',
+  },
+  {
+    type: 'top_leaning',
+    label: 'Leaning Casual',
+    labelKr: '기대기 캐주얼',
+    promptEn: 'leaning slightly against window sill or wall, one leg slightly bent, relaxed casual stance, comfortable lifestyle moment',
+    framing: 'medium shot from chest to knees, natural posture',
+    handPosition: 'one hand resting on surface, other arm relaxed or touching hair',
+  },
+  {
+    type: 'top_detail',
+    label: 'Detail Neckline',
+    labelKr: '디테일 넥라인',
+    promptEn: 'close-up shot focused on neckline and upper chest area, subtle collar detail, fabric texture visible, minimal pose',
+    framing: 'tight crop from neck to mid-chest, neckline as focal point',
+    handPosition: 'arms not visible or just shoulders, focus on garment details',
+  },
+  {
+    type: 'top_sitting',
+    label: 'Sitting',
+    labelKr: '앉은 포즈',
+    promptEn: 'seated on stool or chair, relaxed posture with straight back, hands on lap or one on thigh, natural comfortable seated position',
+    framing: 'medium shot from chest to upper thighs, seated pose visible',
+    handPosition: 'hands resting on lap or one hand on thigh, relaxed position',
+  },
+];
+
+/**
+ * TopPoseType을 프롬프트로 변환
+ */
+export function getTopPosePrompt(poseType: TopPoseType): string {
+  const pose = TOP_POSES.find(p => p.type === poseType);
+  if (!pose) {
+    return TOP_POSES[0].promptEn; // 기본값: front
+  }
+  return pose.promptEn;
+}
+
+/**
+ * TopPoseType에 해당하는 프레이밍 가이드
+ */
+export function getTopPoseFraming(poseType: TopPoseType): string {
+  const pose = TOP_POSES.find(p => p.type === poseType);
+  if (!pose) {
+    return TOP_POSES[0].framing;
+  }
+  return pose.framing;
+}
 
 // IDM-VTON Garment Categories
 export type VTONCategory = 'upper_body' | 'lower_body' | 'dresses';
@@ -83,7 +239,7 @@ export interface BackgroundSpot {
 export interface GeneratedImage {
   id: string;
   url: string;
-  pose: PoseType;
+  pose: PoseType | TopPoseType | BottomPoseType | OuterPoseType | DressPoseType;  // 모든 복종 포즈 지원
   timestamp: number;
   settings: GenerationSettings;
   provider: string;
@@ -146,58 +302,6 @@ export const DEFAULT_GENERATION_SETTINGS: GenerationSettings = {
 // POSE_CONFIGS는 DEFAULT_POSES를 사용 (위에서 정의됨)
 
 // ============================================
-// LoRA Training Types
-// ============================================
-
-export type LoRAStatus = 'idle' | 'uploading' | 'training' | 'completed' | 'failed';
-
-export interface LoRAModel {
-  id: string;
-  name: string;
-  description?: string;
-  status: LoRAStatus;
-  replicateModelId?: string; // Replicate에서 생성된 모델 ID (training ID)
-  replicateVersionId?: string; // 학습 완료 후 버전 ID
-  replicateDestination?: string; // Replicate 모델 경로 (username/model-slug)
-  modelSlug?: string; // 모델 슬러그 (URL-safe 이름)
-  trainingImages: string[]; // 학습에 사용된 이미지 URL들 (ZIP URL)
-  trainingImageCount?: number; // 실제 학습에 사용된 이미지 개수
-  triggerWord: string; // LoRA 트리거 단어 (예: "ABLYSTYLE")
-  createdAt: number;
-  completedAt?: number;
-  error?: string;
-  estimatedCost?: number; // USD
-}
-
-export interface LoRATrainingRequest {
-  name: string;
-  description?: string;
-  images: string[]; // base64 이미지들
-  triggerWord?: string;
-  trainingSteps?: number; // 기본 1000-1500
-}
-
-export interface LoRATrainingResponse {
-  success: boolean;
-  model?: LoRAModel;
-  trainingId?: string; // Replicate training ID
-  error?: string;
-}
-
-export interface LoRAGenerationRequest {
-  loraModelId: string;
-  prompt: string;
-  garmentImage?: string;
-  pose: PoseType;
-  seed?: number;
-}
-
-// LoRA 관련 Provider Config 확장
-export interface ExtendedProviderConfig extends ProviderConfig {
-  activeLoRA?: string; // 현재 사용 중인 LoRA 모델 ID
-}
-
-// ============================================
 // History & Project Types
 // ============================================
 
@@ -210,14 +314,13 @@ export interface GenerationSession {
   generatedImages: GeneratedImage[];
   settings: GenerationSettings;
   providers: ProviderConfig;
-  loraModelId?: string; // 사용된 LoRA 모델 ID
   totalCost?: number; // 예상 비용
 }
 
 export interface HistoryItem {
   id: string;
   sessionId: string;
-  type: 'generation' | 'lora-training';
+  type: 'generation';
   timestamp: number;
   thumbnail?: string; // 첫 번째 생성 이미지
   garmentCount: number;
@@ -232,103 +335,7 @@ export interface ProjectSettings {
   createdAt: number;
   settings: GenerationSettings;
   providers: ProviderConfig;
-  loraModelId?: string;
 }
-
-// ============================================
-// Prompt Customization Types
-// ============================================
-
-export interface PromptTemplate {
-  id: string;
-  name: string;
-  description?: string;
-  category: 'model' | 'background' | 'style' | 'custom';
-  basePrompt: string;
-  negativePrompt?: string;
-  isDefault?: boolean;
-}
-
-export interface CustomPromptSettings {
-  useCustomPrompt: boolean;
-  basePrompt: string;
-  styleModifiers: string[]; // 추가 스타일 수식어
-  negativePrompt: string;
-  templateId?: string; // 선택된 템플릿 ID
-}
-
-// 기본 프롬프트 템플릿들
-export const DEFAULT_PROMPT_TEMPLATES: PromptTemplate[] = [
-  {
-    id: 'iphone-natural',
-    name: '아이폰 자연광',
-    description: '자연스러운 아이폰 촬영 느낌',
-    category: 'style',
-    basePrompt: 'iPhone photo, natural lighting, soft shadows, authentic candid moment, slight grain, neutral natural tones',
-    negativePrompt: 'studio lighting, flash, artificial, overly edited, HDR, oversaturated',
-    isDefault: true,
-  },
-  {
-    id: 'studio-clean',
-    name: '스튜디오 클린',
-    description: '깔끔한 스튜디오 촬영',
-    category: 'style',
-    basePrompt: 'professional studio photography, soft box lighting, clean white background, high-end fashion editorial',
-    negativePrompt: 'outdoor, natural lighting, grainy, amateur',
-  },
-  {
-    id: 'lifestyle-casual',
-    name: '라이프스타일 캐주얼',
-    description: '일상적인 캐주얼 느낌',
-    category: 'style',
-    basePrompt: 'lifestyle photography, casual setting, urban backdrop, relaxed atmosphere, street style',
-    negativePrompt: 'formal, studio, stiff pose',
-  },
-  {
-    id: 'korean-model',
-    name: '한국 모델',
-    description: '젊은 한국인 여성 모델',
-    category: 'model',
-    basePrompt: 'young Korean woman, slim figure, modern hairstyle, natural makeup, cropped above lips showing only body',
-    negativePrompt: 'full face visible, western features, heavy makeup, aged',
-  },
-  {
-    id: 'minimal-bg',
-    name: '미니멀 배경',
-    description: '심플한 단색 배경',
-    category: 'background',
-    basePrompt: 'minimal background, soft gradient, clean aesthetic, no distracting elements',
-    negativePrompt: 'busy background, cluttered, detailed scenery',
-  },
-  {
-    id: 'outdoor-natural',
-    name: '야외 자연',
-    description: '자연스러운 야외 배경',
-    category: 'background',
-    basePrompt: 'outdoor setting, natural environment, soft bokeh background, golden hour lighting',
-    negativePrompt: 'indoor, studio, artificial lighting',
-  },
-];
-
-// 스타일 수식어 옵션들
-export const STYLE_MODIFIERS = [
-  { id: 'warm-tone', label: '따뜻한 톤', prompt: 'warm color grading' },
-  { id: 'cool-tone', label: '차가운 톤', prompt: 'cool blue undertones' },
-  { id: 'high-contrast', label: '하이 콘트라스트', prompt: 'high contrast, dramatic shadows' },
-  { id: 'soft-light', label: '소프트 라이트', prompt: 'soft diffused lighting' },
-  { id: 'golden-hour', label: '골든아워', prompt: 'golden hour warm sunlight' },
-  { id: 'film-grain', label: '필름 그레인', prompt: 'subtle film grain texture' },
-  { id: 'vintage', label: '빈티지', prompt: 'vintage aesthetic, muted colors' },
-  { id: 'modern-clean', label: '모던 클린', prompt: 'modern clean aesthetic, sharp details' },
-];
-
-export const DEFAULT_CUSTOM_PROMPT_SETTINGS: CustomPromptSettings = {
-  useCustomPrompt: false,
-  basePrompt: '',
-  styleModifiers: [],
-  negativePrompt: 'blurry, low quality, distorted, ugly, deformed, bad anatomy, watermark, signature, twisted feet, broken ankles, contorted limbs, unnatural pose, extra fingers, missing limbs',
-  templateId: 'iphone-natural',
-};
 
 // ⭐️ Phase 1-2: GarmentCategory → VTONCategory 매핑 함수
 /**

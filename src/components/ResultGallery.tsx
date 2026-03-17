@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { GeneratedImage, PoseType, DEFAULT_POSES } from '@/types';
+import { GeneratedImage, PoseType, TopPoseType, BottomPoseType, OuterPoseType, DressPoseType, DEFAULT_POSES, TOP_POSES } from '@/types';
 
 interface ResultGalleryProps {
   images: GeneratedImage[];
@@ -20,7 +20,7 @@ export default function ResultGallery({
   onRegenerate,
   onUpscale,
 }: ResultGalleryProps) {
-  const [selectedPose, setSelectedPose] = useState<PoseType | 'all'>('all');
+  const [selectedPose, setSelectedPose] = useState<PoseType | TopPoseType | BottomPoseType | OuterPoseType | DressPoseType | 'all'>('all');
   const [selectedImage, setSelectedImage] = useState<GeneratedImage | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const imageContainerRef = useRef<HTMLDivElement>(null);
@@ -277,8 +277,56 @@ export default function ResultGallery({
     ? images
     : images.filter((img) => img.pose === selectedPose);
 
-  const getPoseLabel = (pose: PoseType) => {
-    return DEFAULT_POSES.find((p) => p.type === pose)?.labelKr || pose;
+  const getPoseLabel = (pose: PoseType | TopPoseType | BottomPoseType | OuterPoseType | DressPoseType) => {
+    // 일반 포즈에서 검색
+    const defaultPose = DEFAULT_POSES.find((p) => p.type === pose);
+    if (defaultPose) return defaultPose.labelKr;
+
+    // TopPose에서 검색
+    const topPose = TOP_POSES.find((p) => p.type === pose);
+    if (topPose) return topPose.labelKr;
+
+    // BottomPose 레이블 매핑
+    const bottomPoseLabels: Record<BottomPoseType, string> = {
+      'bottom_front': '정면',
+      'bottom_side': '측면',
+      'bottom_walking': '워킹',
+      'bottom_sitting': '앉은',
+      'bottom_back': '뒷모습',
+      'bottom_leaning': '기대기',
+    };
+    if (pose in bottomPoseLabels) {
+      return bottomPoseLabels[pose as BottomPoseType];
+    }
+
+    // OuterPose 레이블 매핑 (코트/자켓)
+    const outerPoseLabels: Record<OuterPoseType, string> = {
+      'outer_front_open': '오픈 정면',
+      'outer_front_closed': '클로즈 정면',
+      'outer_side': '측면',
+      'outer_back': '뒷모습',
+      'outer_walking': '워킹',
+      'outer_detail': '디테일',
+    };
+    if (pose in outerPoseLabels) {
+      return outerPoseLabels[pose as OuterPoseType];
+    }
+
+    // DressPose 레이블 매핑 (원피스/드레스)
+    const dressPoseLabels: Record<DressPoseType, string> = {
+      'dress_front': '정면',
+      'dress_side': '측면',
+      'dress_back': '뒷모습',
+      'dress_twirl': '트윌',
+      'dress_sitting': '앉은',
+      'dress_detail': '디테일',
+      'dress_leaning': '기대기',
+    };
+    if (pose in dressPoseLabels) {
+      return dressPoseLabels[pose as DressPoseType];
+    }
+
+    return pose;
   };
 
   const uniquePoses = Array.from(new Set(images.map((img) => img.pose)));
